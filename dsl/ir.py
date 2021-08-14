@@ -44,13 +44,13 @@ class Node():
         it will be recursively visited.
         """
 
-    def callback_wrapper(callback, obj, args):
-        if callback is None:
+        def callback_wrapper(callback, obj, args):
+            if callback is None:
+                return obj
+            result = callback(obj, args)
+            if result is not None:
+                return result
             return obj
-        result = callback(obj, args)
-        if result is not None:
-            return result
-        return obj
 
         self_copy = copy.copy(self)
         obj = callback_wrapper(callback, self_copy, args)
@@ -114,7 +114,7 @@ class BinaryOp(Node):
     def __str__(self):
         result = str(self.operand[0])
         for operator, operand in zip(self.operator, self.operand[1:]):
-            result += '{} {}'.format(operator, operand)
+            result += ' {} {}'.format(operator, operand)
         return result
 
     @property
@@ -185,11 +185,11 @@ class Call(Node):
     LINEAR_ATTRS = ('arg',)
 
     def __str__(self):
-        return '{}({})'.format(self.name, ', '.join(map(str, self.arg)))
+        return ' {} ({})'.format(self.name, ', '.join(map(str, self.arg)))
 
     @property
     def c_expr(self):
-        return '{}({})'.format(self.name, ', '.join(_.c_expr for _ in self.arg))
+        return ' {} ({})'.format(self.name, ', '.join(_.c_expr for _ in self.arg))
 
 class Var(Node):
     SCALAR_ATTRS = ('name',)
@@ -231,12 +231,12 @@ class OutputStmt(Node):
 
 class Program(Node):
     SCALAR_ATTRS = ('iterate', 'app_name', 'kernel_count', 'output_stmt')
-    LINEAR_ATTRS = ('input_stmt', )
+    LINEAR_ATTRS = ('input_stmts', )
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.size = self.input_stmt[0].size
-        self.dim = len(self.input_stmt[0].size)
+        self.size = self.input_stmts[0].size
+        self.dim = len(self.input_stmts[0].size)
 
     def __str__(self):
         return '\n'.join(filter(None, (
@@ -244,7 +244,7 @@ class Program(Node):
             'iterate: {}'.format(self.iterate),
             'kernel count: {}'.format(self.kernel_count),
             'size: {}'.format(self.size),
-            '\n'.join(map(str, self.input_stmt)),
+            '\n'.join(map(str, self.input_stmts)),
             str(self.output_stmt)
         )))
 

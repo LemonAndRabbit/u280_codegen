@@ -5,6 +5,7 @@ import sys
 
 import textx
 
+import core
 import dsl
 from dsl import ir
 
@@ -38,6 +39,14 @@ def main():
 
     logger.info('Program successfully parsed:\n %s',
                 str(dsl_m).replace('\n', '\n '))
+
+    stencil = core.Stencil(
+        iterate=dsl_m.iterate,
+        app_name=dsl_m.app_name,
+        size=dsl_m.size,
+        input_stmts=dsl_m.input_stmts,
+        output_stmt=dsl_m.output_stmt
+    )
 
 if __name__ == '__main__':
     main()
