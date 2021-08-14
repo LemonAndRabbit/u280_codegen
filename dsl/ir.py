@@ -1,5 +1,7 @@
 import copy
 
+from dsl import utils
+
 class Node():
     """A immutable, hashable IR node.
     """
@@ -94,7 +96,7 @@ class Let(Node):
 
     @property
     def c_expr(self):
-        return 'const {} {} = {};'.format(self.ctype, self.name, self.expr.c_expr)
+        return 'const {} {} = {};'.format('float', self.name, self.expr.c_expr)
 
 class Ref(Node):
     SCALAR_ATTRS = ('name',)
@@ -106,6 +108,11 @@ class Ref(Node):
 
     def __str__(self):
         result = '{}({})'.format(self.name, ', '.join(map(str, self.idx)))
+        return result
+
+    @property
+    def c_expr(self):
+        result = self.name
         return result
 
 class BinaryOp(Node):
@@ -175,10 +182,13 @@ class Operand(Node):
     @property
     def c_expr(self):
         for attr in ('call', 'ref', 'num', 'var'):
-            if getattr(self, attr) is not None:
-                return str(getattr(self, attr))
+            attr = getattr(self, attr)
+            if attr is not None:
+                if hasattr(attr, 'c_expr'):
+                    return attr.c_expr
+            return str(attr)
         else:
-            return str(self.expr)
+            return utils.parenthesize(self.expr.c_expr)
 
 class Call(Node):
     SCALAR_ATTRS = ('name',)

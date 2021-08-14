@@ -33,7 +33,7 @@ class Stencil():
 
         self.all_refs = utils.find_relative_ref_position(self.output_stmt, self.output_idx)
 
-        _logger.debug("Get references: %s",
-                      '/n'.join("%s: %s" % (name, ", ".join("(%d, %d)" % (i[0], i[1]) for i in pos)) for name, pos in self.all_refs.items()))
+        _logger.debug("Get references: \n\t%s",
+                      '\n\t'.join("%s:\t%s" % (name, ", ".join("(%d, %d)" % (i[0], i[1]) for i in pos)) for name, pos in self.all_refs.items()))
 
         pass
