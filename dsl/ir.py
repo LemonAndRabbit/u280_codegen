@@ -122,14 +122,22 @@ class BinaryOp(Node):
         result = str(self.operand[0])
         for operator, operand in zip(self.operator, self.operand[1:]):
             result += ' {} {}'.format(operator, operand)
-        return result
+        if self.singleton:
+            return result
+        return utils.parenthesize(result)
 
     @property
     def c_expr(self):
         result = self.operand[0].c_expr
         for operator, operand in zip(self.operator, self.operand[1:]):
             result += ' {} {}'.format(operator, operand.c_expr)
-        return result
+        if self.singleton:
+            return result
+        return utils.parenthesize(result)
+
+    @property
+    def singleton(self) -> bool:
+        return len(self.operand) == 1
 
 class Expr(BinaryOp):
     pass

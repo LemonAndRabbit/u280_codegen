@@ -47,3 +47,13 @@ def find_relative_ref_position(stmt, relative_position):
         return node.visit(visitor)
 
     return find_in_a_place(stmt.expr)
+
+def find_refs_by_row(postions: list) -> dict:
+    result = {}
+    for refs in postions:
+        if refs[0] not in result.keys():
+            result[refs[0]] = set()
+            result[refs[0]].add(refs[1])
+        else:
+            result[refs[0]].add(refs[1])
+    return result
