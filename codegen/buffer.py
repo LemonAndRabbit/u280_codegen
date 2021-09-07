@@ -4,7 +4,7 @@ import collections
 from codegen.codegen_utils import Printer
 from codegen import codegen_utils
 
-class BufferConfig:
+class InputBufferConfig:
     def __init__(self, var_name, refs_by_row, unroll_factor, size):
         self.var_name = var_name
         self.refs_by_row = refs_by_row
@@ -170,3 +170,90 @@ class BufferConfig:
                 printer.println('%s_line%s >> popout_%s_%s;'
                                 % (self.var_name, codegen_utils.idx2str(line_num),
                                    self.var_name, codegen_utils.idx2str(line_num)))
+
+    def print_c_buffer_def(self, printer:Printer):
+        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*GRID_COLS;' %
+                        (self.var_name, max(self.refs_by_row.keys())-min(self.refs_by_row.keys())))
+        printer.println('std::vector<std::vector<float, aligned_allocator<float> > > %ss;' % self.var_name)
+        with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
+            printer.println('%ss.emplace_back(%s_buffer_size, 0);' % (self.var_name, self.var_name))
+
+    def print_c_buffer_init(self, printer:Printer):
+        printer.println('read_%s_buffer(%ss);' % (self.var_name, self.var_name))
+
+    def print_c_buffer_allocate(self, printer:Printer):
+        printer.println('std::vector<cl_mem_ext_ptr_t> ptr_%ss(KERNEL_COUNT);' % self.var_name)
+        printer.println('std::vector<cl::Buffer> device_%ss;' % self.var_name)
+
+        with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
+            printer.println('ptr_%ss[i].obj = %ss[i].data();' % (self.var_name, self.var_name))
+            printer.println('ptr_%ss[i].param = 0;' % self.var_name)
+            printer.println('ptr_%ss[i].flags = pc[hbm_offset_%s[i]];' % (self.var_name, self.var_name))
+            printer.println()
+            printer.println('OCL_CHECK(err, device_%ss.emplace_back(context, ' 
+                            'CL_MEM_USE_HOST_PTR | CL_MEM_EXT_PTR_XILINX | CL_MEM_READ_WRITE, ' % self.var_name)
+            printer.println('\t%s_buffer_size*sizeof(float), &ptr_%ss[i], &err);' % (self.var_name, self.var_name))
+
+    def print_c_load_func(self, printer: Printer):
+        printer.println('void read_%s_buffer(std::vector<std::vector<float, aligned_allocator<float> > >& %ss) {'
+                        % (self.var_name, self.var_name))
+        printer.do_indent()
+
+        printer.println('const std::string %s_path("../data/%s.data");' % (self.var_name, self.var_name))
+        printer.println('std::ifstream %s_file(%s_path);' % (self.var_name, self.var_name))
+
+        printer.println()
+        printer.println('std::cout << "Start loading %s" << std::endl;' % (self.var_name))
+
+        printer.println()
+
+        with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
+            with printer.if_('i == 0'):
+                printer.println('fill_buffer(%ss[i].data() + %d*GRID_COLS, %s_file, 0, '
+                                'GRID_COLS*PART_ROWS + %d*GRID_COLS);'
+                                % (self.var_name, abs(min(self.refs_by_row.keys())),
+                                   self.var_name, max(self.refs_by_row.keys())))
+            with printer.elif_('i == KERNEL_COUNT - 1'):
+                printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*GRID_COLS'
+                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS);'
+                                % (self.var_name, self.var_name, abs(min(self.refs_by_row.keys())),
+                                   abs(min(self.refs_by_row.keys()))))
+            with printer.else_():
+                printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*GRID_COLS'
+                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS);'
+                                % (self.var_name, self.var_name, abs(min(self.refs_by_row.keys())),
+                                   max(self.refs_by_row.keys()) - min(self.refs_by_row.keys())))
+
+        printer.println()
+
+        printer.println('%s_file.close();' % self.var_name)
+        printer.un_indent()
+        printer.println('}')
+
+
+
+class OuputBufferConfig:
+    def __init__(self, var_name):
+        self.var_name = var_name
+
+    def print_c_buffer_def(self, printer:Printer):
+        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS;' % (self.var_name))
+        printer.println('std::vector<std::vector<float, aligned_allocator<float> > > %ss;' % self.var_name)
+        with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
+            printer.println('%ss.emplace_back(%s_buffer_size, 0);' % (self.var_name, self.var_name))
+
+    def print_c_buffer_init(self, printer:Printer):
+        printer.println('read_%s_buffer(%ss);' % (self.var_name, self.var_name))
+
+    def print_c_buffer_allocate(self, printer:Printer):
+        printer.println('std::vector<cl_mem_ext_ptr_t> ptr_%ss(KERNEL_COUNT);' % self.var_name)
+        printer.println('std::vector<cl::Buffer> device_%ss;' % self.var_name)
+
+        with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
+            printer.println('ptr_%ss[i].obj = %ss[i].data();' % (self.var_name, self.var_name))
+            printer.println('ptr_%ss[i].param = 0;' % self.var_name)
+            printer.println('ptr_%ss[i].flags = pc[hbm_offset_%s[i]];' % (self.var_name, self.var_name))
+            printer.println()
+            printer.println('OCL_CHECK(err, device_%ss.emplace_back(context, ' 
+                            'CL_MEM_USE_HOST_PTR | CL_MEM_EXT_PTR_XILINX | CL_MEM_READ_WRITE, ' % self.var_name)
+            printer.println('\t%s_buffer_size*sizeof(float), &ptr_%ss[i], &err);' % (self.var_name, self.var_name))

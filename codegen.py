@@ -50,14 +50,7 @@ def main():
         output_stmt=dsl_m.output_stmt
     )
 
-    with open('%s.cpp' % stencil.app_name, 'w') as file:
-        codegen.kernel_gen(stencil, file)
-        #codegen.host_gen(stencil, file)
-
-    with open('%s.h' % stencil.app_name, 'w') as file:
-        codegen.head_gen(stencil, file)
-
-
+    codegen.hls_codegen(stencil)
 
 if __name__ == '__main__':
     main()

@@ -8,7 +8,7 @@ from core.utils import find_refs_by_row
 
 _logger = logging.getLogger().getChild(__name__)
 
-def kernel_gen(stencil, output_file):
+def kernel_gen(stencil, output_file, buffer_configs):
     _logger.info('generate kernel code as %s', output_file.name)
     printer = codegen_utils.Printer(output_file)
 
@@ -23,7 +23,7 @@ def kernel_gen(stencil, output_file):
     _print_stencil_kernel(stencil, printer)
 
     printer.println()
-    _print_backbone(stencil, printer)
+    _print_backbone(stencil, printer, buffer_configs)
     printer.println()
 
     printer.println('extern "C"{')
@@ -70,14 +70,10 @@ def _print_stencil_kernel(stencil: core.Stencil, printer: codegen_utils.Printer)
 
     printer.un_scope()
 
-def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer):
+def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, buffer_configs):
     input_names = stencil.input_vars
-    buffer_configs = {}
     input_def = []
-    for input_var in input_names:
-        var_references = stencil.all_refs[input_var]
-        refs_by_row = find_refs_by_row(var_references)
-        buffer_configs[input_var] = (buffer.BufferConfig(input_var, refs_by_row, 16, stencil.size))
+    for input_var in stencil.input_vars:
         input_def.append('INTERFACE_WIDTH *%s' % input_var)
 
     input_def.append('INTERFACE_WIDTH *%s' % stencil.output_var)
