@@ -31,6 +31,21 @@ int fill_buffer(float* buffer, std::ifstream &data_input, size_t offset, size_t 
 
     return 0;
 }
+
+int fill_buffer(std::vector<float> &buffer, std::ifstream &data_input, size_t offset, size_t length) {
+    data_input.seekg(std::ios::beg);
+
+    float temp;
+    for(size_t i = 0; i < offset; i++){
+        data_input >> temp;
+    }
+    for(size_t i = 0; i < length; i++){
+        data_input >> buffer[i];
+    }
+
+    return 0;
+}
+
 '''
 
 verify_function = '''
@@ -44,7 +59,7 @@ bool verify(std::vector<std::vector<float, aligned_allocator<float> > >& results
     out << std::fixed;
     report << std::fixed;
 
-    float check_val[GRID_COLS*GRID_ROWS];
+    std::vector<float> check_val(GRID_COLS*GRID_ROWS);
     const std::string check_path("../data/check.data");
     std::ifstream check_file(check_path);
     fill_buffer(check_val, check_file, 0, GRID_COLS * GRID_ROWS);
@@ -52,10 +67,15 @@ bool verify(std::vector<std::vector<float, aligned_allocator<float> > >& results
     
     for(int i = 0; i < KERNEL_COUNT; i++){
         for(int j = 0; j < GRID_COLS * PART_ROWS; j++){
-            out << results[i][j + APPEND + %d] << std::endl;
-            if(fabs(results[i][j + APPEND + %d] - check_val[i * GRID_COLS * PART_ROWS + j]) > 1e-18){
-                report << "Unmatch in position" << i << " : " << j / GRID_COLS << " : " << j %% GRID_COLS <<
-                    "where " << results[i][j + APPEND + %d] << " != " << check_val[i * GRID_COLS * PART_ROWS + j] << std::endl;
+            out << results[i][j + TOP_APPEND*GRID_COLS + %d*GRID_COLS] << std::endl;
+        
+            if(fabs(results[i][j + TOP_APPEND*GRID_COLS + %d*GRID_COLS] 
+                        - check_val[i * GRID_COLS * PART_ROWS + j]) > 1e-10){
+                        
+                report << "Unmatch in position" << i << " : " << j / GRID_COLS << " : " << j %% GRID_COLS 
+                    << "where " << results[i][j + TOP_APPEND*GRID_COLS + %d*GRID_COLS] << " != " 
+                    << check_val[i * GRID_COLS * PART_ROWS + j] << std::endl;
+                
                 match = false;            
             }
         }
@@ -66,7 +86,7 @@ bool verify(std::vector<std::vector<float, aligned_allocator<float> > >& results
 }
 '''
 
-init_opencl = '''
+unikernel_init_opencl = '''
     if (argc != 2) {
         std::cout << "Usage: " << argv[0] << " <XCLBIN File>" << std::endl;
         return EXIT_FAILURE;
@@ -109,6 +129,67 @@ init_opencl = '''
             char kernel_name[50];
             for(int k = 0; k < KERNEL_COUNT; k++){
                 sprintf(kernel_name, "unikernel:{unikernel_%d}", k+1);
+                OCL_CHECK(err, kernels.emplace_back(program, kernel_name, &err));
+            }
+            valid_device = true;
+            break; // we break because we found a valid device
+        }
+    }
+    if (!valid_device) {
+        std::cout << "Failed to program any device found, exit!\\n";
+        exit(EXIT_FAILURE);
+    }
+'''
+
+streaming_kernel_init_opencl = '''
+    if (argc != 2) {
+        std::cout << "Usage: " << argv[0] << " <XCLBIN File>" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    // OpenCL Host Code Begins.
+    cl_int err;
+
+    // OpenCL objects
+    cl::Device device;
+    cl::Context context;
+    cl::CommandQueue q;
+    cl::Program program;
+    std::vector<cl::Kernel> kernels;
+
+    auto binaryFile = argv[1];
+
+    // get_xil_devices() is a utility API which will find the xilinx
+    // platforms and will return list of devices connected to Xilinx platform
+    auto devices = xcl::get_xil_devices();
+
+    // read_binary_file() is a utility API which will load the binaryFile
+    // and will return the pointer to file buffer.
+    auto fileBuf = xcl::read_binary_file(binaryFile);
+    cl::Program::Binaries bins{{fileBuf.data(), fileBuf.size()}};
+    bool valid_device = false;
+    for (unsigned int i = 0; i < devices.size(); i++) {
+        device = devices[i];
+        // Creating Context and Command Queue for selected Device
+        OCL_CHECK(err, context = cl::Context(device, NULL, NULL, NULL, &err));
+        OCL_CHECK(err, q = cl::CommandQueue(context, device,
+                                            CL_QUEUE_PROFILING_ENABLE | CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err));
+        std::cout << "Trying to program device[" << i << "]: " << device.getInfo<CL_DEVICE_NAME>() << std::endl;
+        cl::Program program(context, {device}, bins, NULL, &err);
+        if (err != CL_SUCCESS) {
+            std::cout << "Failed to program device[" << i << "] with xclbin file!\\n";
+        } else {
+            std::cout << "Device[" << i << "]: program successful!\\n";
+            // Creating Kernel
+            char kernel_name[50];
+            for(int k = 0; k < KERNEL_COUNT; k++){
+                if(k==0){
+                    sprintf(kernel_name, "upkernel");
+                }else if(k==KERNEL_COUNT-1){
+                    sprintf(kernel_name, "downkernel");
+                }else{
+                    sprintf(kernel_name, "midkernel:{midkernel_%d}", k+1);
+                }
                 OCL_CHECK(err, kernels.emplace_back(program, kernel_name, &err));
             }
             valid_device = true;

@@ -14,30 +14,39 @@ class InputBufferConfig:
         self.poped_num = collections.OrderedDict()
         self.size = size
 
-    def print_define_buffer(self, printer: Printer):
         topmost = min(self.refs_by_row.keys())
         downmost = max(self.refs_by_row.keys())
 
         for line_num in range(topmost, downmost):
             if line_num not in self.refs_by_row.keys():
                 self.block_num[line_num] = 0
-                printer.println('hls::stream<INTERFACE_WIDTH, GRID_COLS/WIDTH_FACTOR - %s> %s_line_%s;' %
-                                (self.block_num[line_num] - 1, self.var_name, codegen_utils.idx2str(line_num)))
                 self.flow.append('%s_line_%s' % (self.var_name, codegen_utils.idx2str(line_num)))
             else:
                 rightmost = max(self.refs_by_row[line_num])
                 self.block_num[line_num] = math.ceil(rightmost/self.unroll_factor) + 1
                 for i in range(self.block_num[line_num]):
-                    printer.println('INTERFACE_WIDTH %s_line_%s_block_%s;' % (self.var_name, codegen_utils.idx2str(line_num), i))
                     self.flow.append('%s_line_%s_block_%s'  % (self.var_name, codegen_utils.idx2str(line_num), i))
-                printer.println('hls::stream<INTERFACE_WIDTH, GRID_COLS/WIDTH_FACTOR - %s> %s_line_%s;' %
-                                (self.block_num[line_num] - 1, self.var_name, codegen_utils.idx2str(line_num)))
                 self.flow.append('%s_line_%s' % (self.var_name, codegen_utils.idx2str(line_num)))
         rightmost = max(self.refs_by_row[downmost])
         self.block_num[downmost] = math.ceil(float(rightmost) / self.unroll_factor) + 1
         for i in range(self.block_num[downmost]):
-            printer.println('INTERFACE_WIDTH %s_line_%s_block_%s;' % (self.var_name, codegen_utils.idx2str(downmost), i))
             self.flow.append('%s_line_%s_block_%s' % (self.var_name, codegen_utils.idx2str(downmost), i))
+
+    def print_define_buffer(self, printer: Printer):
+        topmost = min(self.refs_by_row.keys())
+        downmost = max(self.refs_by_row.keys())
+
+        for line_num in range(topmost, downmost):
+            if line_num not in self.refs_by_row.keys():
+                printer.println('hls::stream<INTERFACE_WIDTH, GRID_COLS/WIDTH_FACTOR - %s> %s_line_%s;' %
+                                (self.block_num[line_num] - 1, self.var_name, codegen_utils.idx2str(line_num)))
+            else:
+                for i in range(self.block_num[line_num]):
+                    printer.println('INTERFACE_WIDTH %s_line_%s_block_%s;' % (self.var_name, codegen_utils.idx2str(line_num), i))
+                printer.println('hls::stream<INTERFACE_WIDTH, GRID_COLS/WIDTH_FACTOR - %s> %s_line_%s;' %
+                                (self.block_num[line_num] - 1, self.var_name, codegen_utils.idx2str(line_num)))
+        for i in range(self.block_num[downmost]):
+            printer.println('INTERFACE_WIDTH %s_line_%s_block_%s;' % (self.var_name, codegen_utils.idx2str(downmost), i))
 
     def print_poped_object_def(self, printer: Printer):
         topmost = min(self.refs_by_row.keys())
@@ -58,12 +67,14 @@ class InputBufferConfig:
         for line_num in self.block_num.keys():
             for i in range(self.block_num[line_num]):
                 printer.println('%s = %s[%s*GRID_COLS/WIDTH_FACTOR + %s];'
-                                %(self.flow[flow_scan], self.var_name, line_num, i))
+                                %(self.flow[flow_scan], self.var_name, line_num + abs(min(self.block_num.keys())), i))
                 flow_scan += 1
             if line_num != list(self.block_num.keys())[-1]:
                 with printer.for_('int i = %s*GRID_COLS/WIDTH_FACTOR + %s'
-                                  % (line_num, self.block_num[line_num]),
-                              'i < %s*GRID_COLS/WIDTH_FACTOR' % (line_num+1), 'i++'):
+                                    % (line_num + + abs(min(self.block_num.keys())), self.block_num[line_num]),
+                                  'i < %s*GRID_COLS/WIDTH_FACTOR'
+                                    % (line_num + abs(min(self.block_num.keys())) + 1),
+                                  'i++'):
                     printer.println('%s << %s[i];' % (self.flow[flow_scan], self.var_name))
                     flow_scan += 1
 
@@ -151,7 +162,8 @@ class InputBufferConfig:
 
         printer.println()
         printer.println('unsigned int idx_%s = %s*GRID_COLS/WIDTH_FACTOR + (i + %s);'
-                        % (self.var_name, max(self.block_num.keys()), str(self.block_num[downmost])))
+                        % (self.var_name, max(self.block_num.keys()) + abs(min(self.block_num.keys())),
+                           str(self.block_num[downmost])))
         printer.println('%s = HLS_REG(%s[idx_%s]);'
                         % (self.flow[-1], self.var_name, self.var_name))
 
@@ -172,7 +184,8 @@ class InputBufferConfig:
                                    self.var_name, codegen_utils.idx2str(line_num)))
 
     def print_c_buffer_def(self, printer:Printer):
-        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*GRID_COLS + 2*APPEND*GRID_COLS;' %
+        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*GRID_COLS'
+                        ' + (TOP_APPEND+BOTTOM_APPEND)*GRID_COLS;' %
                         (self.var_name, max(self.refs_by_row.keys())-min(self.refs_by_row.keys())))
         printer.println('std::vector<std::vector<float, aligned_allocator<float> > > %ss;' % self.var_name)
         with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
@@ -210,22 +223,22 @@ class InputBufferConfig:
         with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
 
             with printer.ifel_('i == 0'):
-                printer.println('fill_buffer(%ss[i].data() + %d*GRID_COLS + APPEND*GRID_COLS, %s_file, 0, '
-                                'GRID_COLS*PART_ROWS + %d*GRID_COLS + APPEND*GRID_COLS);'
+                printer.println('fill_buffer(%ss[i].data() + %d*GRID_COLS + TOP_APPEND*GRID_COLS,'
+                                ' %s_file, 0, GRID_COLS*PART_ROWS + %d*GRID_COLS + BOTTOM_APPEND*GRID_COLS);'
                                 % (self.var_name, abs(min(self.refs_by_row.keys())),
                                    self.var_name, max(self.refs_by_row.keys())))
 
             with printer.elifel_('i == KERNEL_COUNT - 1'):
                 printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*GRID_COLS '
-                                '- APPEND*GRID_COLS'
-                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS + APPEND*GRID_COLS);'
+                                '- TOP_APPEND*GRID_COLS'
+                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS + TOP_APPEND*GRID_COLS);'
                                 % (self.var_name, self.var_name, abs(min(self.refs_by_row.keys())),
                                    abs(min(self.refs_by_row.keys()))))
 
             with printer.else_():
                 printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*GRID_COLS '
-                                '- APPEND*GRID_COLS'
-                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS + 2*APPEND*GRID_COLS);'
+                                '- TOP_APPEND*GRID_COLS'
+                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS + (TOP_APPEND+BOTTOM_APPEND)*GRID_COLS);'
                                 % (self.var_name, self.var_name, abs(min(self.refs_by_row.keys())),
                                    max(self.refs_by_row.keys()) - min(self.refs_by_row.keys())))
 
@@ -242,7 +255,8 @@ class OutputBufferConfig:
         self.refs_by_row = refs_by_row
 
     def print_c_buffer_def(self, printer:Printer):
-        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*GRID_COLS + 2*APPEND*GRID_COLS;'
+        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*GRID_COLS '
+                        '+ (TOP_APPEND+BOTTOM_APPEND)*GRID_COLS;'
                         % (self.var_name, max(self.refs_by_row.keys())-min(self.refs_by_row.keys())))
         printer.println('std::vector<std::vector<float, aligned_allocator<float> > > %ss;' % self.var_name)
         with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):

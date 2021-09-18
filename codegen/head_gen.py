@@ -6,7 +6,7 @@ from dsl import ir
 
 _logger = logging.getLogger().getChild(__name__)
 
-def head_gen(stencil, output_file):
+def head_gen(stencil, output_file, output_buffer_config):
     _logger.info('generate kernel code as %s', output_file.name)
     printer = codegen_utils.Printer(output_file)
 
@@ -38,8 +38,10 @@ def head_gen(stencil, output_file):
         printer.println('typedef ap_axiu<DWIDTH, 0, 0, 0> pkt;')
 
     if stencil.boarder_type == 'overlap':
-        printer.println('#define APPEND %d' % (stencil.iterate-1))
+        printer.println('#define TOP_APPEND %d' % ((stencil.iterate-1)*abs(min(output_buffer_config.refs_by_row.keys()))))
+        printer.println('#define BOTTOM_APPEND %d' % ((stencil.iterate-1)*max(output_buffer_config.refs_by_row.keys())))
     else:
-        printer.println('#define APPEND 0')
+        printer.println('#define TOP_APPEND 0')
+        printer.println('#define BOTTOM_APPEND 0')
 
     printer.println('#endif')

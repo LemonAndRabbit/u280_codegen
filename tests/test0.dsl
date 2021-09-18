@@ -1,6 +1,6 @@
 KERNEL: X_AVG
-COUNT: 6
+COUNT: 1
 ITERATE: 2
 BOARDER: overlap
-input x(100, 100)
+input x(1024, 1024)
 output y(0, 0) = x(-2, -1) * (x(0, 1) + x(3, 0))

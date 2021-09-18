@@ -13,11 +13,6 @@ def kernel_gen(stencil, output_file, input_buffer_configs, output_buffer_config,
     _logger.info('generate kernel code as %s', output_file.name)
     printer = codegen_utils.Printer(output_file)
 
-    if stencil.iterate > 1 and stencil.boarder_type == 'overlap':
-        append = stencil.iterate - 1
-    else:
-        append = 0
-
     includes = ['<hls_stream.h>', '"%s.h"' % stencil.app_name]
     for include in includes:
         printer.println('#include %s' % include)
@@ -29,7 +24,7 @@ def kernel_gen(stencil, output_file, input_buffer_configs, output_buffer_config,
     _print_stencil_kernel(stencil, printer)
 
     printer.println()
-    _print_backbone(stencil, printer, input_buffer_configs, append)
+    _print_backbone(stencil, printer, input_buffer_configs)
 
     _print_stream_function(printer, output_buffer_config, position)
 
@@ -63,7 +58,7 @@ def _print_stencil_kernel(stencil: core.Stencil, printer: codegen_utils.Printer)
         for position in positions:
             ports.append("float %s_%s" % (name, '_'.join(codegen_utils.idx2str(idx) for idx in position)))
 
-    printer.print_func('float %s_stencil_kernel' % stencil.app_name, ports)
+    printer.print_func('static float %s_stencil_kernel' % stencil.app_name, ports)
     printer.do_scope('stencil kernel definition')
 
     def mutate_name(node: ir.Node, relative_idx: (int,)):
@@ -85,7 +80,7 @@ def _print_stencil_kernel(stencil: core.Stencil, printer: codegen_utils.Printer)
     printer.un_scope()
 
 
-def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input_buffer_configs, append):
+def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input_buffer_configs):
     input_names = stencil.input_vars
     input_def = []
     for input_var in stencil.input_vars:
@@ -107,7 +102,7 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
 
     printer.println('MAJOR_LOOP:')
     with printer.for_('int i = 0',
-                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + 2*%d*GRID_COLS/WIDTH_FACTOR' % append,
+                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + (TOP_APPEND+BOTTOM_APPEND)*GRID_COLS/WIDTH_FACTOR',
                       'i++'):
         printer.println('#pragma HLS pipeline II=1')
         printer.println()
@@ -142,7 +137,8 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
             printer.println('float result = %s_stencil_kernel(%s);'
                             % (stencil.app_name, ', '.join(map(lambda x: x + '[k]', all_ports))))
             printer.println('%s[i + %d*GRID_COLS/WIDTH_FACTOR].range(idx_k+31, idx_k) = *((uint32_t *)(&result));'
-                            % (stencil.output_var, abs(min(input_buffer_configs[stencil.input_vars[-1]].refs_by_row.keys()))))
+                            % (stencil.output_var,
+                               abs(min(input_buffer_configs[stencil.input_vars[-1]].refs_by_row.keys()))))
 
         for buffer_instance in input_buffer_configs.values():
             buffer_instance.print_data_movement(printer)

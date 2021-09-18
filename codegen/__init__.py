@@ -17,7 +17,7 @@ def hls_codegen(stencil):
                                                      input_buffer_configs[stencil.input_vars[-1]].refs_by_row)
 
     with open('%s.h' % stencil.app_name, 'w') as file:
-        head_gen.head_gen(stencil, file)
+        head_gen.head_gen(stencil, file, output_buffer_config)
 
     with open('host.cpp', 'w') as file:
         host_gen.host_gen(stencil, file, input_buffer_configs, output_buffer_config)

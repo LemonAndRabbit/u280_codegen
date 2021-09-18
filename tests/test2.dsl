@@ -1,6 +1,6 @@
-KERNEL: X_AVG2
+KERNEL: X_AVG
 COUNT: 6
-ITERATE: 3
-input x(100, 100)
-input z(100, 100)
-output y(0, 0) = x(0, -1) * (x(0, 1) + x(0, 0)) + x(0, -2) + x(-1, 0) + z(1, 0)
+ITERATE: 2
+BOARDER: streaming
+input x(3072, 1024)
+output y(0, 0) = x(-2, -1) * (x(0, 1) + x(3, 0))

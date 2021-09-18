@@ -39,7 +39,10 @@ def _print_main(stencil, printer, input_buffer_configs, output_buffer_config):
     printer.println('int main(int argc, char** argv) {')
     printer.do_indent()
 
-    printer.println(host_codes.init_opencl)
+    if stencil.boarder_type != 'streaming':
+        printer.println(host_codes.unikernel_init_opencl)
+    else:
+        printer.println(host_codes.streaming_kernel_init_opencl)
     printer.println('std::cout << "%s kernel loaded." << std::endl;' % stencil.app_name)
 
     printer.println()
