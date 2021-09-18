@@ -26,9 +26,20 @@ def head_gen(stencil, output_file):
     printer.println()
 
     printer.println('#include "ap_int.h"')
+    printer.println('#include <inttypes.h>')
     printer.println('#define DWIDTH 512')
     printer.println('#define INTERFACE_WIDTH ap_uint<DWIDTH>')
     printer.println('\tconst int WIDTH_FACTOR = DWIDTH/32;')
+    printer.println('#define PARA_FACTOR 16')
     printer.println()
+
+    if stencil.boarder_type == 'streaming':
+        printer.println('#include "ap_axi_sdata.h"')
+        printer.println('typedef ap_axiu<DWIDTH, 0, 0, 0> pkt;')
+
+    if stencil.boarder_type == 'overlap':
+        printer.println('#define APPEND %d' % (stencil.iterate-1))
+    else:
+        printer.println('#define APPEND 0')
 
     printer.println('#endif')

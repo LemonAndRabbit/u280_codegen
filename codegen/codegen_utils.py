@@ -97,11 +97,27 @@ class Printer():
         self.println('}')
 
     @contextlib.contextmanager
-    def elif_(self, cond):
+    def ifel_(self, cond):
+        self.println('if ({}) {{'.format(cond))
+        self.do_indent()
+        yield
         self.un_indent()
+
+    @contextlib.contextmanager
+    def elif_(self, cond):
         self.println('}} else if ({}) {{'.format(cond))
         self.do_indent()
         yield
+        self.un_indent()
+        self.println('}')
+
+
+    @contextlib.contextmanager
+    def elifel_(self, cond):
+        self.println('}} else if ({}) {{'.format(cond))
+        self.do_indent()
+        yield
+
 
     @contextlib.contextmanager
     def else_(self):
@@ -109,6 +125,8 @@ class Printer():
         self.println('} else {')
         self.do_indent()
         yield
+        self.un_indent()
+        self.println('}')
 
 def print_define(printer, var, val):
     printer.println('#ifndef %s' % var)

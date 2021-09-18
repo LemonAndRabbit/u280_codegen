@@ -2,6 +2,7 @@ lan = """
 Program:
 (
     ('ITERATE' ':' iterate=INT)
+    ('BOARDER' ':' boarder_type=BoarderType)?
     ('KERNEL' ':' app_name=ID)
     ('COUNT' ':' kernel_count=INT)
     (input_stmts=InputStmt)+
@@ -9,6 +10,8 @@ Program:
 )#;
 
 Comment: /\/\/.*$/;
+
+BoarderType: 'overlap' | 'streaming';
 
 InputStmt: 'input' name=ID '(' size=INT (',' size=INT)* ')'; //now all inputs&outputs are forced to be float value
 

@@ -248,7 +248,7 @@ class OutputStmt(Node):
         return let + 'output float: {} = {}'.format(self.ref, self.expr)
 
 class Program(Node):
-    SCALAR_ATTRS = ('iterate', 'app_name', 'kernel_count', 'output_stmt')
+    SCALAR_ATTRS = ('iterate', 'app_name', 'kernel_count', 'output_stmt', 'boarder_type')
     LINEAR_ATTRS = ('input_stmts', )
 
     def __init__(self, **kwargs):
@@ -260,6 +260,7 @@ class Program(Node):
         return '\n'.join(filter(None, (
             'kernel: {}'.format(self.app_name),
             'iterate: {}'.format(self.iterate),
+            'boarder type: {}'.format(self.boarder_type),
             'kernel count: {}'.format(self.kernel_count),
             'size: {}'.format(self.size),
             '\n'.join(map(str, self.input_stmts)),

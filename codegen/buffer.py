@@ -73,11 +73,11 @@ class InputBufferConfig:
                             % (self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1]),
                                self.var_name, codegen_utils.idx2str(src_idx[0])))
             if default_stmt is not '':
-                printer.println('%s = (%s)? %s: *((float*)(&temp_%s_line_%s_%s));'
+                printer.println('%s[k] = (%s)? %s: *((float*)(&temp_%s_line_%s_%s));'
                             % (dst, default_stmt, str(default_value),
                                self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1])))
             else:
-                printer.println('%s = *((float*)(&temp_%s_line_%s_%s));'
+                printer.println('%s[k] = *((float*)(&temp_%s_line_%s_%s));'
                                 % (dst,
                                    self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1])))
 
@@ -96,11 +96,11 @@ class InputBufferConfig:
                                switched_idx_left_offset, switched_idx_right_offset,
                                self.var_name, codegen_utils.idx2str(src_idx[0]), idx_left_offset, idx_right_offset))
             if default_stmt is not '':
-                printer.println('%s = (%s)? %s: *((float*)(&temp_%s_line_%s_%s));'
+                printer.println('%s[k] = (%s)? %s: *((float*)(&temp_%s_line_%s_%s));'
                             % (dst, default_stmt, str(default_value),
                                self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1])))
             else:
-                printer.println('%s = *((float*)(&temp_%s_line_%s_%s));'
+                printer.println('%s[k] = *((float*)(&temp_%s_line_%s_%s));'
                                 % (dst,
                                    self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1])))
         elif src_idx[1] < 0:
@@ -110,7 +110,7 @@ class InputBufferConfig:
             switch_k = abs(src_idx[1])
             switched_idx_left_offset = idx_left_offset + self.unroll_factor * 32
             switched_idx_right_offset = idx_right_offset + self.unroll_factor * 32
-            printer.println('uint32_t temp_%s_line_%s_%s = (k<%s)?%s_line_%s_block_m1.range(idx_k + %s, idx_k + %s)'
+            printer.println('uint32_t temp_%s_line_%s_%s = (k<%s)?%s_poped_line_%s_block_m0.range(idx_k + %s, idx_k + %s)'
                             ' : %s_line_%s_block_0.range(idx_k + %s, idx_k + %s);'
                             % (self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1]),
                                str(switch_k),
@@ -118,11 +118,11 @@ class InputBufferConfig:
                                switched_idx_left_offset, switched_idx_right_offset,
                                self.var_name, codegen_utils.idx2str(src_idx[0]), idx_left_offset, idx_right_offset))
             if default_stmt is not '':
-                printer.println('%s = (%s)? %s: *((float*)(&temp_%s_line_%s_%s));'
+                printer.println('%s[k] = (%s)? %s: *((float*)(&temp_%s_line_%s_%s));'
                             % (dst, default_stmt, str(default_value),
                                self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1])))
             else:
-                printer.println('%s = *((float*)(&temp_%s_line_%s_%s));'
+                printer.println('%s[k] = *((float*)(&temp_%s_line_%s_%s));'
                                 % (dst,
                                    self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1])))
 
@@ -132,7 +132,7 @@ class InputBufferConfig:
         for line_num in range(topmost, downmost + 1): #fill in poped buffers
             #TODO: handle more left buffers
             if line_num in self.poped_num.keys():
-                printer.println('%s_line_%s_block_m1 = HLS_REG(%s_line_%s_block_0);'
+                printer.println('%s_poped_line_%s_block_m0 = HLS_REG(%s_line_%s_block_0);'
                                 % (self.var_name, codegen_utils.idx2str(line_num), self.var_name, codegen_utils.idx2str(line_num)))
 
         for x, y in zip(self.flow, self.flow[1:]):
@@ -150,8 +150,8 @@ class InputBufferConfig:
             printer.println(temp)
 
         printer.println()
-        printer.println('unsigned int idx_%s = GRID_COLS/WIDTH_FACTOR + (i + %s);'
-                        % (self.var_name, str(self.block_num[downmost])))
+        printer.println('unsigned int idx_%s = %s*GRID_COLS/WIDTH_FACTOR + (i + %s);'
+                        % (self.var_name, max(self.block_num.keys()), str(self.block_num[downmost])))
         printer.println('%s = HLS_REG(%s[idx_%s]);'
                         % (self.flow[-1], self.var_name, self.var_name))
 
@@ -167,12 +167,12 @@ class InputBufferConfig:
                 start_pop_idx = self.block_num[line_num]
             with printer.for_('int i=%s' % start_pop_idx, 'i < GRID_COLS/WIDTH_FACTOR', 'i++'):
                 printer.println('#pragma HLS pipeline II=1')
-                printer.println('%s_line%s >> popout_%s_%s;'
+                printer.println('%s_line_%s >> popout_%s_%s;'
                                 % (self.var_name, codegen_utils.idx2str(line_num),
                                    self.var_name, codegen_utils.idx2str(line_num)))
 
     def print_c_buffer_def(self, printer:Printer):
-        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*GRID_COLS;' %
+        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*GRID_COLS + 2*APPEND*GRID_COLS;' %
                         (self.var_name, max(self.refs_by_row.keys())-min(self.refs_by_row.keys())))
         printer.println('std::vector<std::vector<float, aligned_allocator<float> > > %ss;' % self.var_name)
         with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
@@ -192,7 +192,7 @@ class InputBufferConfig:
             printer.println()
             printer.println('OCL_CHECK(err, device_%ss.emplace_back(context, ' 
                             'CL_MEM_USE_HOST_PTR | CL_MEM_EXT_PTR_XILINX | CL_MEM_READ_WRITE, ' % self.var_name)
-            printer.println('\t%s_buffer_size*sizeof(float), &ptr_%ss[i], &err);' % (self.var_name, self.var_name))
+            printer.println('\t%s_buffer_size*sizeof(float), &ptr_%ss[i], &err));' % (self.var_name, self.var_name))
 
     def print_c_load_func(self, printer: Printer):
         printer.println('void read_%s_buffer(std::vector<std::vector<float, aligned_allocator<float> > >& %ss) {'
@@ -208,19 +208,24 @@ class InputBufferConfig:
         printer.println()
 
         with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
-            with printer.if_('i == 0'):
-                printer.println('fill_buffer(%ss[i].data() + %d*GRID_COLS, %s_file, 0, '
-                                'GRID_COLS*PART_ROWS + %d*GRID_COLS);'
+
+            with printer.ifel_('i == 0'):
+                printer.println('fill_buffer(%ss[i].data() + %d*GRID_COLS + APPEND*GRID_COLS, %s_file, 0, '
+                                'GRID_COLS*PART_ROWS + %d*GRID_COLS + APPEND*GRID_COLS);'
                                 % (self.var_name, abs(min(self.refs_by_row.keys())),
                                    self.var_name, max(self.refs_by_row.keys())))
-            with printer.elif_('i == KERNEL_COUNT - 1'):
-                printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*GRID_COLS'
-                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS);'
+
+            with printer.elifel_('i == KERNEL_COUNT - 1'):
+                printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*GRID_COLS '
+                                '- APPEND*GRID_COLS'
+                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS + APPEND*GRID_COLS);'
                                 % (self.var_name, self.var_name, abs(min(self.refs_by_row.keys())),
                                    abs(min(self.refs_by_row.keys()))))
+
             with printer.else_():
-                printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*GRID_COLS'
-                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS);'
+                printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*GRID_COLS '
+                                '- APPEND*GRID_COLS'
+                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS + 2*APPEND*GRID_COLS);'
                                 % (self.var_name, self.var_name, abs(min(self.refs_by_row.keys())),
                                    max(self.refs_by_row.keys()) - min(self.refs_by_row.keys())))
 
@@ -231,19 +236,17 @@ class InputBufferConfig:
         printer.println('}')
 
 
-
-class OuputBufferConfig:
-    def __init__(self, var_name):
+class OutputBufferConfig:
+    def __init__(self, var_name, refs_by_row):
         self.var_name = var_name
+        self.refs_by_row = refs_by_row
 
     def print_c_buffer_def(self, printer:Printer):
-        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS;' % (self.var_name))
+        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*GRID_COLS + 2*APPEND*GRID_COLS;'
+                        % (self.var_name, max(self.refs_by_row.keys())-min(self.refs_by_row.keys())))
         printer.println('std::vector<std::vector<float, aligned_allocator<float> > > %ss;' % self.var_name)
         with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
             printer.println('%ss.emplace_back(%s_buffer_size, 0);' % (self.var_name, self.var_name))
-
-    def print_c_buffer_init(self, printer:Printer):
-        printer.println('read_%s_buffer(%ss);' % (self.var_name, self.var_name))
 
     def print_c_buffer_allocate(self, printer:Printer):
         printer.println('std::vector<cl_mem_ext_ptr_t> ptr_%ss(KERNEL_COUNT);' % self.var_name)
@@ -256,4 +259,4 @@ class OuputBufferConfig:
             printer.println()
             printer.println('OCL_CHECK(err, device_%ss.emplace_back(context, ' 
                             'CL_MEM_USE_HOST_PTR | CL_MEM_EXT_PTR_XILINX | CL_MEM_READ_WRITE, ' % self.var_name)
-            printer.println('\t%s_buffer_size*sizeof(float), &ptr_%ss[i], &err);' % (self.var_name, self.var_name))
+            printer.println('\t%s_buffer_size*sizeof(float), &ptr_%ss[i], &err));' % (self.var_name, self.var_name))

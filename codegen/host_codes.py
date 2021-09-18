@@ -52,10 +52,10 @@ bool verify(std::vector<std::vector<float, aligned_allocator<float> > >& results
     
     for(int i = 0; i < KERNEL_COUNT; i++){
         for(int j = 0; j < GRID_COLS * PART_ROWS; j++){
-            out << results[i][j] << std::endl;
-            if(fabs(results[i][j] - check_results[i * GRID_COLS * PART_ROWS + j]) > 1e-18){
-                report << "Unmatch in position" << i << " : " << j / GRID_COLS << " : " << j % GRID_COLS <<
-                    "where " << results[i][j] << " != " << check_results[i * GRID_COLS * PART_ROWS + j] << std::endl;
+            out << results[i][j + APPEND + %d] << std::endl;
+            if(fabs(results[i][j + APPEND + %d] - check_val[i * GRID_COLS * PART_ROWS + j]) > 1e-18){
+                report << "Unmatch in position" << i << " : " << j / GRID_COLS << " : " << j %% GRID_COLS <<
+                    "where " << results[i][j + APPEND + %d] << " != " << check_val[i * GRID_COLS * PART_ROWS + j] << std::endl;
                 match = false;            
             }
         }

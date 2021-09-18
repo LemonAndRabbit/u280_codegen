@@ -9,10 +9,11 @@ from dsl import ir
 _logger = logging.getLogger().getChild(__name__)
 
 def host_gen(stencil, output_file, input_buffer_configs, output_buffer_config):
-    _logger.info('generate kernel code as %s', output_file.name)
+    _logger.info('generate host code as %s', output_file.name)
     printer = codegen_utils.Printer(output_file)
 
-    include_files = ['<iostream>', '<string>', '<unistd.h>', '<vector>', '<fstream>', '"math.h"', '"%s.h"' % stencil.app_name]
+    include_files = ['<iostream>', '<string>', '<unistd.h>', '<vector>', '<fstream>', '<sys/time.h>',
+                     '"math.h"', '"%s.h"' % stencil.app_name, '"hbm_config.h"']
     for file_name in include_files:
         printer.println('#include %s' %file_name)
 
@@ -25,7 +26,10 @@ def host_gen(stencil, output_file, input_buffer_configs, output_buffer_config):
     for buffer in input_buffer_configs.values():
         buffer.print_c_load_func(printer)
 
-    printer.println(host_codes.verify_function)
+    printer.println(host_codes.verify_function
+                    % (-min(output_buffer_config.refs_by_row.keys()),
+                        -min(output_buffer_config.refs_by_row.keys()),
+                        -min(output_buffer_config.refs_by_row.keys())))
 
     _print_main(stencil, printer, input_buffer_configs, output_buffer_config)
 
@@ -47,7 +51,6 @@ def _print_main(stencil, printer, input_buffer_configs, output_buffer_config):
         printer.println()
 
     output_buffer_config.print_c_buffer_def(printer)
-    output_buffer_config.print_c_buffer_init(printer)
 
     printer.println('std::cout << "%s buffers inited." << std::endl;' % stencil.app_name)
 
@@ -79,7 +82,7 @@ def _print_main(stencil, printer, input_buffer_configs, output_buffer_config):
 
     printer.println('q.finish();')
 
-    printer.println('std::cout << "Write device buffer finished << std::endl";')
+    printer.println('std::cout << "Write device buffer finished" << std::endl;')
 
     printer.println()
 
@@ -91,7 +94,7 @@ def _print_main(stencil, printer, input_buffer_configs, output_buffer_config):
         printer.println('OCL_CHECK(err, err = q.enqueueTask(kernels[i]));')
 
     printer.println('q.finish();')
-    printer.println('std::cout << "Execution finished << std::endl;"')
+    printer.println('std::cout << "Execution finished" << std::endl;')
 
     printer.println()
 
@@ -104,16 +107,21 @@ def _print_main(stencil, printer, input_buffer_configs, output_buffer_config):
 
     printer.println('// Check results')
 
+    if stencil.iterate%2 == 0:
+        final_result_buffer = stencil.input_vars[-1]
+    else:
+        final_result_buffer = stencil.output_var
+
     with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
         printer.println('OCL_CHECK(err, err = q.enqueueMigrateMemObjects({device_%ss[i]}, CL_MIGRATE_MEM_OBJECT_HOST));'
-                        % stencil.output_var)
+                        % final_result_buffer)
 
     printer.println('q.finish();')
     printer.println('std::cout << "Read results finished." << std::endl;')
 
     printer.println()
 
-    printer.println('bool match = verify(%ss);' % stencil.output_var)
+    printer.println('bool match = verify(%ss);' % final_result_buffer)
 
     printer.println('return (match ? EXIT_SUCCESS : EXIT_FAILURE);')
 

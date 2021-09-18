@@ -43,6 +43,7 @@ def main():
 
     stencil = core.Stencil(
         iterate=dsl_m.iterate,
+        boarder_type=dsl_m.boarder_type,
         kernel_count=dsl_m.kernel_count,
         app_name=dsl_m.app_name,
         size=dsl_m.size,

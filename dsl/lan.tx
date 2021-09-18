@@ -1,11 +1,14 @@
 Program:
 (
     ('ITERATE' ':' iterate=INT)
+    ('BOARDER' ':' boarder_type=BoarderType)?
     ('KERNEL' ':' app_name=ID)
     ('COUNT' ':' kernel_count=INT)
-    (input_stmt=InputStmt)+
+    (input_stmts=InputStmt)+
     (output_stmt=OutputStmt)
 )#;
+
+BoarderType: 'overlap' | 'streaming';
 
 Comment: /\/\/.*$/;
 

@@ -10,6 +10,7 @@ class Stencil():
 
     def __init__(self, **kwargs):
         self.iterate = kwargs.pop('iterate')
+        self.boarder_type = kwargs.pop('boarder_type')
         self.kernel_count = kwargs.pop('kernel_count')
         self.app_name = kwargs.pop('app_name')
         self.size = kwargs.pop('size')
