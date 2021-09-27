@@ -194,7 +194,8 @@ class Operand(Node):
             if attr is not None:
                 if hasattr(attr, 'c_expr'):
                     return attr.c_expr
-            return str(attr)
+                else:
+                    return str(attr)
         else:
             return utils.parenthesize(self.expr.c_expr)
 
@@ -203,11 +204,18 @@ class Call(Node):
     LINEAR_ATTRS = ('arg',)
 
     def __str__(self):
-        return ' {} ({})'.format(self.name, ', '.join(map(str, self.arg)))
+        if self.name == 'if':
+            return ' ({}?{}:{})'.format(str(self.arg[0]), str(self.arg[1]), str(self.arg[2]))
+        else:
+            return ' {} ({})'.format(self.name, ', '.join(map(str, self.arg)))
+
 
     @property
     def c_expr(self):
-        return ' {} ({})'.format(self.name, ', '.join(_.c_expr for _ in self.arg))
+        if self.name == 'if':
+            return ' ({}?{}:{})'.format(str(self.arg[0].c_expr), str(self.arg[1].c_expr), str(self.arg[2].c_expr))
+        else:
+            return ' {} ({})'.format(self.name, ', '.join(_.c_expr for _ in self.arg))
 
 class Var(Node):
     SCALAR_ATTRS = ('name',)
@@ -232,24 +240,25 @@ class InputStmt(Node):
             result += '[{}]'.format(', '.join(map(str, self.size)))
         return result
 
+class LocalStmt(Node):
+    SCALAR_ATTRS = ['let',]
+
+    def __str__(self):
+        return str(self.let)
+
 class OutputStmt(Node):
     SCALAR_ATTRS = 'ref', 'expr'
-    LINEAR_ATTRS = ('let',)
 
     @property
     def name(self):
         return self.ref.name
 
     def __str__(self):
-        if self.let:
-            let = '\n   {}\n'.format('\n '.join(map(str, self.let)))
-        else:
-            let = ''
-        return let + 'output float: {} = {}'.format(self.ref, self.expr)
+        return 'output float: {} = {}'.format(self.ref, self.expr)
 
 class Program(Node):
     SCALAR_ATTRS = ('iterate', 'app_name', 'kernel_count', 'output_stmt', 'boarder_type')
-    LINEAR_ATTRS = ('input_stmts', )
+    LINEAR_ATTRS = ('input_stmts', 'local_stmts')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -264,12 +273,14 @@ class Program(Node):
             'kernel count: {}'.format(self.kernel_count),
             'size: {}'.format(self.size),
             '\n'.join(map(str, self.input_stmts)),
+            '\n'.join(map(str, self.local_stmts)),
             str(self.output_stmt)
         )))
 
 CLASSES = (
     Program,
     InputStmt,
+    LocalStmt,
     OutputStmt,
     Let,
     Ref,

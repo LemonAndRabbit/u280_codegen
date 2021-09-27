@@ -48,6 +48,7 @@ def main():
         app_name=dsl_m.app_name,
         size=dsl_m.size,
         input_stmts=dsl_m.input_stmts,
+        local_stmts=dsl_m.local_stmts,
         output_stmt=dsl_m.output_stmt
     )
 

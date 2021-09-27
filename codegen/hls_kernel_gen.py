@@ -69,12 +69,18 @@ def _print_stencil_kernel(stencil: core.Stencil, printer: codegen_utils.Printer)
 
     output_stmt = stencil.output_stmt.visit(mutate_name, stencil.output_idx)
 
+    local_stmts = []
+    for i in range(0, len(stencil.local_stmts)):
+        local_stmts.append(stencil.local_stmts[i].visit(mutate_name, (0,0)))
+
     printer.println('/*')
     printer.do_indent()
     printer.println(stencil.output_stmt.expr)
     printer.un_indent()
     printer.println('*/')
 
+    for local_stmt in local_stmts:
+        printer.println(local_stmt.let.c_expr)
     printer.println('return ' + output_stmt.expr.c_expr + ';')
 
     printer.un_scope()
@@ -108,6 +114,8 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
         printer.println()
         printer.println('COMPUTE_LOOP:')
         with printer.for_('int k = 0', 'k < PARA_FACTOR', 'k++'):
+            printer.println('#pragma HLS unroll')
+
             all_refs = stencil.all_refs
             all_ports = []
             for name, positions in all_refs.items():
@@ -144,8 +152,10 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
             buffer_instance.print_data_movement(printer)
     printer.println()
 
+    '''
     for buffer_instance in input_buffer_configs.values():
         buffer_instance.print_pop_out(printer)
+    '''
 
     printer.println('return;')
 
@@ -171,6 +181,9 @@ def _print_interface(stencil: core.Stencil, printer: codegen_utils.Printer):
     printer.println('#pragma HLS INTERFACE s_axilite port=return')
 
     printer.println()
+
+    printer.println('#pragma HLS allocation function instances=%s limit=1' % stencil.app_name)
+
     printer.println()
 
     if stencil.iterate > 1:
@@ -214,6 +227,9 @@ def _print_stream_interface(stencil: core.Stencil, printer: codegen_utils.Printe
     printer.println('#pragma HLS INTERFACE s_axilite port=return')
 
     printer.println()
+
+    printer.println('#pragma HLS allocation function instances=%s limit=1' % stencil.app_name)
+
     printer.println()
 
     if stencil.iterate > 1:

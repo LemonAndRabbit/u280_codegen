@@ -14,7 +14,7 @@ def cal_relative(idx, relative):
         result.append(i-j)
     return tuple(result)
 
-def find_relative_ref_position(stmt, relative_position):
+def find_relative_ref_position(stmt, relative_position, acc_positions):
     """Find references in all positions of the stmt
 
     :param stmt: the input stmt
@@ -24,29 +24,38 @@ def find_relative_ref_position(stmt, relative_position):
 
     if stmt is None:
         _logger.debug('No stmt input')
-        return {}
+        return acc_positions
 
-    def find_in_a_place(node: ir.Node) -> dict:
+    def find_in_a_place(node: ir.Node, ref_positions) -> dict:
         def visitor(node, args=None):
-            ref_positions = {}
 
             if isinstance(node, ir.Ref):
                 if node.name not in ref_positions.keys():
                     ref_positions[node.name] = set()
                 ref_positions[node.name].add(cal_relative(node.idx, relative_position))
-            elif node.operand:
-                for operand in node.operand:
-                    temp_positions = find_in_a_place(operand)
-                    for name, positions in temp_positions.items():
-                        if name not in ref_positions.keys():
-                            ref_positions[name] = set()
-                        for position in positions:
-                            ref_positions[name].add(position)
+            elif hasattr(node, 'operand') or hasattr(node, 'arg'):
+                if hasattr(node, 'operand'):
+                    for operand in node.operand:
+                        temp_positions = find_in_a_place(operand, ref_positions)
+                        for name, positions in temp_positions.items():
+                            if name not in ref_positions.keys():
+                                ref_positions[name] = set()
+                            for position in positions:
+                                ref_positions[name].add(position)
+                if hasattr(node, 'arg'):
+                    for arg in node.arg:
+                        temp_positions = find_in_a_place(arg, ref_positions)
+                        for name, positions in temp_positions.items():
+                            if name not in ref_positions.keys():
+                                ref_positions[name] = set()
+                            for position in positions:
+                                ref_positions[name].add(position)
+
             return ref_positions
 
         return node.visit(visitor)
 
-    return find_in_a_place(stmt.expr)
+    return find_in_a_place(stmt.expr, acc_positions)
 
 def find_refs_by_row(postions: list) -> dict:
     result = {}

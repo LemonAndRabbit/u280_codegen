@@ -1,4 +1,5 @@
 import logging
+import copy
 
 from codegen import codegen_utils
 from codegen import host_codes
@@ -70,7 +71,8 @@ def _print_main(stencil, printer, input_buffer_configs, output_buffer_config):
 
     printer.println('// Set kernel arguments')
 
-    var_list = stencil.input_vars + list(stencil.output_var)
+    var_list = copy.copy(stencil.input_vars)
+    var_list.append(stencil.output_var)
     with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
         count = 0
         for var in var_list:

@@ -6,21 +6,24 @@ Program:
     ('KERNEL' ':' app_name=ID)
     ('COUNT' ':' kernel_count=INT)
     (input_stmts=InputStmt)+
+    (local_stmts=LocalStmt)*
     (output_stmt=OutputStmt)
 )#;
 
-Comment: /\/\/.*$/;
-
 BoarderType: 'overlap' | 'streaming';
+
+Comment: /\/\/.*$/;
 
 InputStmt: 'input' name=ID '(' size=INT (',' size=INT)* ')'; //now all inputs&outputs are forced to be float value
 
-OutputStmt: 'output' (let=Let)* ref=Ref '=' expr=Expr;//now all inputs&outputs are forced to be float value
+LocalStmt: 'local' let=Let;
+
+OutputStmt: 'output' ref=Ref '=' expr=Expr;//now all inputs&outputs are forced to be float value
 
 //Specify Expressions
 Num: INT | FLOAT;
 
-FuncName: 'fabs' | 'abs'; //more functions to be added
+FuncName: 'fabs' | 'abs' | 'if'; //more functions to be added
 
 Let: name=ID '=' expr=Expr;
 Ref: name=ID '(' idx=INT (',' idx=INT)* ')';

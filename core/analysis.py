@@ -15,6 +15,7 @@ class Stencil():
         self.app_name = kwargs.pop('app_name')
         self.size = kwargs.pop('size')
         self.input_stmts = kwargs.pop('input_stmts')
+        self.local_stmts = kwargs.pop('local_stmts')
         self.output_stmt = kwargs.pop('output_stmt')
 
         self.input_vars = []
@@ -31,9 +32,12 @@ class Stencil():
         self.output_idx = self.output_stmt.ref.idx
 
         self.output_stmt.expr = arithmatic.simplify(self.output_stmt.expr)
-        self.output_stmt.let = arithmatic.simplify(self.output_stmt.let)
+        for i in range(0, len(self.local_stmts)):
+            self.local_stmts[i].let = arithmatic.simplify(self.local_stmts[i].let)
 
-        self.all_refs = utils.find_relative_ref_position(self.output_stmt, self.output_idx)
+        self.all_refs = utils.find_relative_ref_position(self.output_stmt, self.output_idx, {})
+        for local_stmt in self.local_stmts:
+            self.all_refs = utils.find_relative_ref_position(local_stmt.let, (0,0), self.all_refs)
 
         _logger.debug("Get references: \n\t%s",
                       '\n\t'.join("%s:\t%s" % (name, ", ".join("(%d, %d)" % (i[0], i[1]) for i in pos)) for name, pos in self.all_refs.items()))
