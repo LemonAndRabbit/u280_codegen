@@ -152,10 +152,10 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
             buffer_instance.print_data_movement(printer)
     printer.println()
 
-    '''
-    for buffer_instance in input_buffer_configs.values():
-        buffer_instance.print_pop_out(printer)
-    '''
+    if stencil.iterate > 1:
+        for buffer_instance in input_buffer_configs.values():
+            buffer_instance.print_pop_out(printer)
+
 
     printer.println('return;')
 
