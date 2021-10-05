@@ -28,9 +28,9 @@ def host_gen(stencil, output_file, input_buffer_configs, output_buffer_config):
         buffer.print_c_load_func(printer)
 
     printer.println(host_codes.verify_function
-                    % (-min(output_buffer_config.refs_by_row.keys()),
-                        -min(output_buffer_config.refs_by_row.keys()),
-                        -min(output_buffer_config.refs_by_row.keys())))
+                    % (output_buffer_config.min_row,
+                       output_buffer_config.min_row,
+                       output_buffer_config.min_row))
 
     _print_main(stencil, printer, input_buffer_configs, output_buffer_config)
 

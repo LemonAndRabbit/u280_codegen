@@ -1,4 +1,4 @@
-import collections
+import math
 
 from dsl import ir
 
@@ -65,4 +65,15 @@ def find_refs_by_row(postions: list) -> dict:
             result[refs[0]].add(refs[1])
         else:
             result[refs[0]].add(refs[1])
+    return result
+
+def find_refs_by_offset(postions: list, size: tuple) -> list:
+    result = []
+    for ref in postions:
+        offset = 0
+        for i in range(len(size)):
+            offset *= size[i]
+            offset += ref[i]
+        result.append(offset)
+    result.sort()
     return result

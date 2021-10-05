@@ -1,4 +1,5 @@
 import logging
+from functools import reduce
 
 from codegen import codegen_utils
 import core
@@ -15,7 +16,7 @@ def head_gen(stencil, output_file, output_buffer_config):
     printer.println()
 
     printer.println('#define GRID_ROWS %d' % stencil.size[0])
-    printer.println('#define GRID_COLS %d' % stencil.size[1])
+    printer.println('#define GRID_COLS %d' % reduce(lambda x,y: x*y, stencil.size[1:]))
     printer.println()
 
     printer.println('#define KERNEL_COUNT %d' % stencil.kernel_count)
@@ -38,8 +39,8 @@ def head_gen(stencil, output_file, output_buffer_config):
         printer.println('typedef ap_axiu<DWIDTH, 0, 0, 0> pkt;')
 
     if stencil.boarder_type == 'overlap':
-        printer.println('#define TOP_APPEND %d' % ((stencil.iterate-1)*abs(min(output_buffer_config.refs_by_row.keys()))))
-        printer.println('#define BOTTOM_APPEND %d' % ((stencil.iterate-1)*max(output_buffer_config.refs_by_row.keys())))
+        printer.println('#define TOP_APPEND %d' % ((stencil.iterate-1)*output_buffer_config.min_row))
+        printer.println('#define BOTTOM_APPEND %d' % ((stencil.iterate-1)*output_buffer_config.max_row))
     else:
         printer.println('#define TOP_APPEND 0')
         printer.println('#define BOTTOM_APPEND 0')

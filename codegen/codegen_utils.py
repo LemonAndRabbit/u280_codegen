@@ -1,5 +1,8 @@
+import copy
 import logging
 import contextlib
+import math
+from functools import reduce
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -159,3 +162,10 @@ def cal_relative(idx, relative):
     for i, j in zip(idx, relative):
         result.append(i-j)
     return tuple(result)
+
+def cvt_idx2offset(idx: tuple, size: tuple) -> int:
+    offset = 0
+    for i in range(len(size)):
+        offset *= size[i]
+        offset += idx[i]
+    return offset

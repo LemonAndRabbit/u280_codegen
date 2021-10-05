@@ -4,18 +4,19 @@ from codegen import buffer
 from codegen import host_gen
 from codegen import hbm_gen
 
-from core.utils import find_refs_by_row
+from core.utils import find_refs_by_offset
 
 
 def hls_codegen(stencil):
     input_buffer_configs = {}
     for input_var in stencil.input_vars:
         var_references = stencil.all_refs[input_var]
-        refs_by_row = find_refs_by_row(var_references)
-        input_buffer_configs[input_var] = (buffer.InputBufferConfig(input_var, refs_by_row, 16, stencil.size))
+        refs_by_offset = find_refs_by_offset(var_references, stencil.size)
+        input_buffer_configs[input_var] = (buffer.InputBufferConfig(input_var, refs_by_offset, 16, stencil.size))
 
     output_buffer_config = buffer.OutputBufferConfig(stencil.output_var,
-                                                     input_buffer_configs[stencil.input_vars[-1]].refs_by_row)
+                                                     input_buffer_configs[stencil.input_vars[-1]].lineBuffer.min_row,
+                                                     input_buffer_configs[stencil.input_vars[-1]].lineBuffer.max_row)
 
     with open('%s.h' % stencil.app_name, 'w') as file:
         head_gen.head_gen(stencil, file, output_buffer_config)

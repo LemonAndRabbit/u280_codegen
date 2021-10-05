@@ -71,7 +71,7 @@ def _print_stencil_kernel(stencil: core.Stencil, printer: codegen_utils.Printer)
 
     local_stmts = []
     for i in range(0, len(stencil.local_stmts)):
-        local_stmts.append(stencil.local_stmts[i].visit(mutate_name, (0,0)))
+        local_stmts.append(stencil.local_stmts[i].visit(mutate_name, (0,)*len(stencil.output_idx)))
 
     printer.println('/*')
     printer.do_indent()
@@ -98,8 +98,6 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
     printer.do_scope('stencil kernel definition')
     for buffer_instance in input_buffer_configs.values():
         buffer_instance.print_define_buffer(printer)
-        printer.println()
-        buffer_instance.print_poped_object_def(printer)
         printer.println()
 
     for buffer_instance in input_buffer_configs.values():
@@ -146,16 +144,17 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
                             % (stencil.app_name, ', '.join(map(lambda x: x + '[k]', all_ports))))
             printer.println('%s[i + %d*GRID_COLS/WIDTH_FACTOR].range(idx_k+31, idx_k) = *((uint32_t *)(&result));'
                             % (stencil.output_var,
-                               abs(min(input_buffer_configs[stencil.input_vars[-1]].refs_by_row.keys()))))
+                               input_buffer_configs[stencil.input_vars[-1]].lineBuffer.min_row))
 
         for buffer_instance in input_buffer_configs.values():
             buffer_instance.print_data_movement(printer)
     printer.println()
 
+    '''
     if stencil.iterate > 1:
         for buffer_instance in input_buffer_configs.values():
             buffer_instance.print_pop_out(printer)
-
+    '''
 
     printer.println('return;')
 
@@ -188,9 +187,11 @@ def _print_interface(stencil: core.Stencil, printer: codegen_utils.Printer):
 
     if stencil.iterate > 1:
         printer.println("int i;")
-        with printer.for_('i=0', 'i<ITERATION/2', 'i++'):
-            printer.println('%s(%s);' % (stencil.app_name, ', '.join(interfaces)))
-            printer.println('%s(%s, %s);' % (stencil.app_name, ', '.join(interfaces[1:]), interfaces[0]))
+        with printer.for_('i=0', 'i<ITERATION', 'i++'):
+            printer.println('if(i%2==0)')
+            printer.println('   %s(%s);' % (stencil.app_name, ', '.join(interfaces)))
+            printer.println('else')
+            printer.println('   %s(%s, %s);' % (stencil.app_name, ', '.join(interfaces[1:]), interfaces[0]))
         if stencil.iterate % 2 != 0:
             printer.println('%s(%s);' % (stencil.app_name, ', '.join(interfaces)))
     else:
@@ -261,8 +262,8 @@ def _print_stream_interface(stencil: core.Stencil, printer: codegen_utils.Printe
 
 
 def _print_stream_function(printer: codegen_utils.Printer, output_buffer_config, position):
-    top_rows = abs(min(output_buffer_config.refs_by_row.keys()))
-    bottom_rows = max(output_buffer_config.refs_by_row.keys())
+    top_rows = output_buffer_config.min_row
+    bottom_rows = output_buffer_config.max_row
     if position == 'up':
         printer.println(hls_kernel_codes.up_exchange
                         % (top_rows, top_rows-top_rows, bottom_rows, top_rows))

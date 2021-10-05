@@ -1,5 +1,5 @@
 KERNEL: X_AVG
-COUNT: 1
+COUNT: 15
 ITERATE: 2
 BOARDER: overlap
 input x(1024, 1024)
