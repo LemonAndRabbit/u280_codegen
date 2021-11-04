@@ -12,11 +12,17 @@ class Stencil():
         self.iterate = kwargs.pop('iterate')
         self.boarder_type = kwargs.pop('boarder_type')
         self.kernel_count = kwargs.pop('kernel_count')
+        self.repeat_count = kwargs.pop('repeat_count')
         self.app_name = kwargs.pop('app_name')
         self.size = kwargs.pop('size')
+        self.scalar_stmts = kwargs.pop('scalar_stmts')
         self.input_stmts = kwargs.pop('input_stmts')
         self.local_stmts = kwargs.pop('local_stmts')
         self.output_stmt = kwargs.pop('output_stmt')
+
+        self.scalar_vars = []
+        for scalar in self.scalar_stmts:
+            self.scalar_vars.append(scalar.name)
 
         self.input_vars = []
         for stmt in self.input_stmts:
@@ -46,5 +52,3 @@ class Stencil():
                                                                         for j in range(0, len(self.output_idx)))+")"
                                                                             for i in pos))
                                                                                 for name, pos in self.all_refs.items()))
-
-        pass

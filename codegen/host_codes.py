@@ -67,13 +67,13 @@ bool verify(std::vector<std::vector<float, aligned_allocator<float> > >& results
     
     for(int i = 0; i < KERNEL_COUNT; i++){
         for(int j = 0; j < GRID_COLS * PART_ROWS; j++){
-            out << results[i][j + TOP_APPEND*GRID_COLS + %d*GRID_COLS] << std::endl;
+            out << results[i][j + (TOP_APPEND+OVERLAP_TOP_OVERHEAD)*WIDTH_FACTOR] << std::endl;
         
-            if(fabs(results[i][j + TOP_APPEND*GRID_COLS + %d*GRID_COLS] 
+            if(fabs(results[i][j + (TOP_APPEND+OVERLAP_TOP_OVERHEAD)*WIDTH_FACTOR] 
                         - check_val[i * GRID_COLS * PART_ROWS + j]) > 1e-10){
                         
-                report << "Unmatch in position" << i << " : " << j / GRID_COLS << " : " << j %% GRID_COLS 
-                    << "where " << results[i][j + TOP_APPEND*GRID_COLS + %d*GRID_COLS] << " != " 
+                report << "Unmatch in position" << i << " : " << j / GRID_COLS << " : " << j % GRID_COLS 
+                    << "where " << results[i][j + (TOP_APPEND+OVERLAP_TOP_OVERHEAD)*WIDTH_FACTOR] << " != " 
                     << check_val[i * GRID_COLS * PART_ROWS + j] << std::endl;
                 
                 match = false;            

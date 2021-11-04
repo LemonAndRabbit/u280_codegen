@@ -27,10 +27,7 @@ def host_gen(stencil, output_file, input_buffer_configs, output_buffer_config):
     for buffer in input_buffer_configs.values():
         buffer.print_c_load_func(printer)
 
-    printer.println(host_codes.verify_function
-                    % (output_buffer_config.min_row,
-                       output_buffer_config.min_row,
-                       output_buffer_config.min_row))
+    printer.println(host_codes.verify_function)
 
     _print_main(stencil, printer, input_buffer_configs, output_buffer_config)
 
@@ -71,12 +68,16 @@ def _print_main(stencil, printer, input_buffer_configs, output_buffer_config):
 
     printer.println('// Set kernel arguments')
 
+    scalar_list = copy.copy(stencil.scalar_vars)
     var_list = copy.copy(stencil.input_vars)
     var_list.append(stencil.output_var)
     with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
         count = 0
         for var in var_list:
             printer.println('OCL_CHECK(err, err = kernels[i].setArg(%d, device_%ss[i]));' % (count, var))
+            count += 1
+        for scalar in scalar_list:
+            printer.println('OCL_CHECK(err, err = kernels[i].setArg(%d, 1.5));' % count)
             count += 1
 
         printer.println()

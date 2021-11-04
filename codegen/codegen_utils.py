@@ -169,3 +169,10 @@ def cvt_idx2offset(idx: tuple, size: tuple) -> int:
         offset *= size[i]
         offset += idx[i]
     return offset
+
+def get_parameter_printed(inputs: list, output: str, scalars: list):
+    out = ', '.join(inputs)
+    out = out + ', ' + output
+    if scalars:
+        out = out + ', ' + ', '.join(scalars)
+    return out

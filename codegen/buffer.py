@@ -25,6 +25,7 @@ class LineBuffer:
         self.unroll_factor = unroll_factor
         self.min_offset = min(refs_by_offset)
         self.max_offset = max(refs_by_offset) + 15
+        '''
         if self.min_offset >= 0:
             self.min_row = 0
         else:
@@ -33,6 +34,11 @@ class LineBuffer:
             self.max_row = 0
         else:
             self.max_row = abs(math.ceil(self.max_offset / reduce(lambda x,y:x*y, size[1:]))) - 1
+        '''
+
+        #TODO: Assume min_offset <= 0 here
+        self.min_block_offset = math.ceil(-self.min_offset/self.unroll_factor)
+        self.max_block_offset = math.ceil(self.max_offset / self.unroll_factor)
 
         self.blocks = list()
         for ref in refs_by_offset:
@@ -85,22 +91,6 @@ class InputBufferConfig:
 
     def print_define_buffer(self, printer: Printer):
         '''Print All Buffer Element Definition'''
-        '''
-        topmost = min(self.refs_by_row.keys())
-        downmost = max(self.refs_by_row.keys())
-
-        for line_num in range(topmost, downmost):
-            if line_num not in self.refs_by_row.keys():
-                printer.println('hls::stream<INTERFACE_WIDTH, GRID_COLS/WIDTH_FACTOR - %s> %s_line_%s;' %
-                                (self.block_num[line_num] - 1, self.var_name, codegen_utils.idx2str(line_num)))
-            else:
-                for i in range(self.block_num[line_num]):
-                    printer.println('INTERFACE_WIDTH %s_line_%s_block_%s;' % (self.var_name, codegen_utils.idx2str(line_num), i))
-                printer.println('hls::stream<INTERFACE_WIDTH, GRID_COLS/WIDTH_FACTOR - %s> %s_line_%s;' %
-                                (self.block_num[line_num] - 1, self.var_name, codegen_utils.idx2str(line_num)))
-        for i in range(self.block_num[downmost]):
-            printer.println('INTERFACE_WIDTH %s_line_%s_block_%s;' % (self.var_name, codegen_utils.idx2str(downmost), i))
-        '''
 
         for buffer_element in self.lineBuffer.buffer_flow:
             if type(buffer_element) == Block:
@@ -109,53 +99,35 @@ class InputBufferConfig:
                 printer.println('hls::stream<INTERFACE_WIDTH, %s> %s;'
                                 % (buffer_element.index2 - buffer_element.index + 2, buffer_element.name))
 
-    '''
-    def print_poped_object_def(self, printer: Printer):
-        topmost = min(self.refs_by_row.keys())
-        downmost = max(self.refs_by_row.keys())
-        for line_num in range(topmost, downmost+1):
-            if line_num not in self.refs_by_row.keys():
-                continue
-            else:
-                leftmost = min(position for position in self.refs_by_row[line_num])
-                if leftmost < 0:
-                    self.poped_num[line_num] = math.ceil(abs(leftmost)/self.unroll_factor)
-                    for position in range(self.poped_num[line_num]):
-                        printer.println('INTERFACE_WIDTH %s_poped_line_%s_block_m%s;'
-                                    % (self.var_name, codegen_utils.idx2str(line_num), position))
-    '''
-
     def print_init_buffer(self, printer: Printer):
         '''Print HLS code to fill in buffer elements'''
 
-        '''
-        flow_scan = 0
-        for line_num in self.block_num.keys():
-            for i in range(self.block_num[line_num]):
-                printer.println('%s = %s[%s*GRID_COLS/WIDTH_FACTOR + %s];'
-                                %(self.flow[flow_scan], self.var_name, line_num + abs(min(self.block_num.keys())), i))
-                flow_scan += 1
-            if line_num != list(self.block_num.keys())[-1]:
-                with printer.for_('int i = %s*GRID_COLS/WIDTH_FACTOR + %s'
-                                    % (line_num + + abs(min(self.block_num.keys())), self.block_num[line_num]),
-                                  'i < %s*GRID_COLS/WIDTH_FACTOR'
-                                    % (line_num + abs(min(self.block_num.keys())) + 1),
+        for buffer_element in self.lineBuffer.buffer_flow:
+            if type(buffer_element) == Block:
+                printer.println('%s = %s[%s + %s];' %
+                                (buffer_element.name, self.var_name, self.lineBuffer.min_block_offset, buffer_element.index))
+            else:
+                with printer.for_('int i = %s + %s'
+                                    % (self.lineBuffer.min_block_offset, buffer_element.index),
+                                  'i < %s + %s'
+                                    % (self.lineBuffer.min_block_offset, buffer_element.index2 + 1),
                                   'i++'):
-                    printer.println('%s << %s[i];' % (self.flow[flow_scan], self.var_name))
-                    flow_scan += 1
-        '''
+                    printer.println('%s << %s[i];' % (buffer_element.name, self.var_name))
+
+    def print_init_buffer_from_stream(self, printer: Printer):
+        '''Print HLS code to fill in buffer elements'''
 
         for buffer_element in self.lineBuffer.buffer_flow:
             if type(buffer_element) == Block:
-                printer.println('%s = %s[%s*GRID_COLS/WIDTH_FACTOR + %s];' %
-                                (buffer_element.name, self.var_name, self.lineBuffer.min_row, buffer_element.index))
+                printer.println('%s = %s.read();' %
+                                (buffer_element.name, self.var_name))
             else:
-                with printer.for_('int i = %s*GRID_COLS/WIDTH_FACTOR + %s'
-                                    % (self.lineBuffer.min_row, buffer_element.index),
-                                  'i < %s*GRID_COLS/WIDTH_FACTOR + %s'
-                                    % (self.lineBuffer.min_row, buffer_element.index2 + 1),
+                with printer.for_('int i = %s + %s'
+                                    % (self.lineBuffer.min_block_offset, buffer_element.index),
+                                  'i < %s + %s'
+                                    % (self.lineBuffer.min_block_offset, buffer_element.index2 + 1),
                                   'i++'):
-                    printer.println('%s << %s[i];' % (buffer_element.name, self.var_name))
+                    printer.println('%s << %s.read();' % (buffer_element.name, self.var_name))
 
     def print_data_retrieve_with_unroll(self, printer: Printer, src_idx, dst='', default_stmt='', default_value=0):
         if src_idx[-1] % self.unroll_factor == 0:
@@ -190,85 +162,9 @@ class InputBufferConfig:
                 printer.println('%s[k] = *((float*)(&temp_%s));'
                                 % (dst, dst))
 
-        '''
-        elif src_idx[1] > 0:
-            #TODO: deal with reference more right blocks
-            idx_left_offset = src_idx[1]*32 + 31
-            idx_right_offset = src_idx[1]*32
-            switch_k = self.unroll_factor - src_idx[1] - 1
-            switched_idx_left_offset = idx_left_offset - self.unroll_factor*32
-            switched_idx_right_offset= idx_right_offset - self.unroll_factor*32
-            printer.println('uint32_t temp_%s_line_%s_%s = (k>%s)?%s_line_%s_block_1.range(idx_k + %s, idx_k + %s)'
-                            ' : %s_line_%s_block_0.range(idx_k + %s, idx_k + %s);'
-                            % (self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1]),
-                               str(switch_k),
-                               self.var_name, codegen_utils.idx2str(src_idx[0]),
-                               switched_idx_left_offset, switched_idx_right_offset,
-                               self.var_name, codegen_utils.idx2str(src_idx[0]), idx_left_offset, idx_right_offset))
-            if default_stmt is not '':
-                printer.println('%s[k] = (%s)? %s: *((float*)(&temp_%s_line_%s_%s));'
-                            % (dst, default_stmt, str(default_value),
-                               self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1])))
-            else:
-                printer.println('%s[k] = *((float*)(&temp_%s_line_%s_%s));'
-                                % (dst,
-                                   self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1])))
-        elif src_idx[1] < 0:
-            #TODO: deal with reference more right blocks
-            idx_left_offset = src_idx[1] * 32 + 31
-            idx_right_offset = src_idx[1] * 32
-            switch_k = abs(src_idx[1])
-            switched_idx_left_offset = idx_left_offset + self.unroll_factor * 32
-            switched_idx_right_offset = idx_right_offset + self.unroll_factor * 32
-            printer.println('uint32_t temp_%s_line_%s_%s = (k<%s)?%s_poped_line_%s_block_m0.range(idx_k + %s, idx_k + %s)'
-                            ' : %s_line_%s_block_0.range(idx_k + %s, idx_k + %s);'
-                            % (self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1]),
-                               str(switch_k),
-                               self.var_name, codegen_utils.idx2str(src_idx[0]),
-                               switched_idx_left_offset, switched_idx_right_offset,
-                               self.var_name, codegen_utils.idx2str(src_idx[0]), idx_left_offset, idx_right_offset))
-            if default_stmt is not '':
-                printer.println('%s[k] = (%s)? %s: *((float*)(&temp_%s_line_%s_%s));'
-                            % (dst, default_stmt, str(default_value),
-                               self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1])))
-            else:
-                printer.println('%s[k] = *((float*)(&temp_%s_line_%s_%s));'
-                                % (dst,
-                                   self.var_name, codegen_utils.idx2str(src_idx[0]), codegen_utils.idx2str(src_idx[1])))
-        '''
 
     def print_data_movement(self, printer: Printer):
         ''' Print aata flow along the Line Buffer'''
-        '''
-        topmost = min(self.refs_by_row.keys())
-        downmost = max(self.refs_by_row.keys())
-        for line_num in range(topmost, downmost + 1): #fill in poped buffers
-            #TODO: handle more left buffers
-            if line_num in self.poped_num.keys():
-                printer.println('%s_poped_line_%s_block_m0 = HLS_REG(%s_line_%s_block_0);'
-                                % (self.var_name, codegen_utils.idx2str(line_num), self.var_name, codegen_utils.idx2str(line_num)))
-
-        for x, y in zip(self.flow, self.flow[1:]):
-            temp = ''
-            if 'block' not in x:
-                temp += x + ' << '
-            else:
-                temp += x + ' = '
-
-            if 'block' not in y:
-                temp += y + '.read()'
-            else:
-                temp += 'HLS_REG(%s)' % y
-            temp += ';'
-            printer.println(temp)
-
-        printer.println()
-        printer.println('unsigned int idx_%s = %s*GRID_COLS/WIDTH_FACTOR + (i + %s);'
-                        % (self.var_name, max(self.block_num.keys()) + abs(min(self.block_num.keys())),
-                           str(self.block_num[downmost])))
-        printer.println('%s = HLS_REG(%s[idx_%s]);'
-                        % (self.flow[-1], self.var_name, self.var_name))
-        '''
         for item1, item2 in zip(self.lineBuffer.buffer_flow, self.lineBuffer.buffer_flow[1:]):
             temp = ''
             if type(item1) != Block:
@@ -284,30 +180,34 @@ class InputBufferConfig:
             printer.println(temp)
 
         printer.println()
-        printer.println('unsigned int idx_%s = %s*GRID_COLS/WIDTH_FACTOR + (i + %s);'
-                        % (self.var_name, self.lineBuffer.min_row, self.lineBuffer.buffer_flow[-1].index + 1))
+        printer.println('unsigned int idx_%s = %s + (i + %s);'
+                        % (self.var_name, self.lineBuffer.min_block_offset, self.lineBuffer.buffer_flow[-1].index + 1))
         printer.println('%s = HLS_REG(%s[idx_%s]);'
                         % (self.lineBuffer.buffer_flow[-1].name, self.var_name, self.var_name))
+
+    def print_data_movement_from_stream(self, printer: Printer):
+        ''' Print aata flow along the Line Buffer'''
+        for item1, item2 in zip(self.lineBuffer.buffer_flow, self.lineBuffer.buffer_flow[1:]):
+            temp = ''
+            if type(item1) != Block:
+                temp += item1.name + ' << '
+            else:
+                temp += item1.name + ' = '
+
+            if type(item2) != Block:
+                temp += item2.name + '.read()'
+            else:
+                temp += 'HLS_REG(%s)' % item2.name
+            temp += ';'
+            printer.println(temp)
+
+        printer.println()
+        printer.println('%s = %s.read();'
+                        % (self.lineBuffer.buffer_flow[-1].name, self.var_name))
 
 
     def print_pop_out(self, printer:Printer):
         '''Print Pop Out all stream buffer'''
-        '''
-        topmost = min(self.refs_by_row.keys())
-        downmost = max(self.refs_by_row.keys())
-        for line_num in range(topmost, downmost):
-            printer.println('INTERFACE_WIDTH popout_%s_%s;'
-                            % (self.var_name, codegen_utils.idx2str(line_num)))
-            if line_num not in self.block_num:
-                start_pop_idx = 0
-            else:
-                start_pop_idx = self.block_num[line_num]
-            with printer.for_('int i=%s' % start_pop_idx, 'i < GRID_COLS/WIDTH_FACTOR', 'i++'):
-                printer.println('#pragma HLS pipeline II=1')
-                printer.println('%s_line_%s >> popout_%s_%s;'
-                                % (self.var_name, codegen_utils.idx2str(line_num),
-                                   self.var_name, codegen_utils.idx2str(line_num)))
-        '''
         for stream_buffer in self.lineBuffer.streams:
             printer.println('INTERFACE_WIDTH popout_%s;'
                             % (stream_buffer.name))
@@ -318,9 +218,10 @@ class InputBufferConfig:
 
 
     def print_c_buffer_def(self, printer:Printer):
-        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*GRID_COLS'
-                        ' + (TOP_APPEND+BOTTOM_APPEND)*GRID_COLS;' %
-                        (self.var_name, self.lineBuffer.min_row + self.lineBuffer.max_row))
+        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*WIDTH_FACTOR'
+                        ' + (TOP_APPEND+BOTTOM_APPEND)*WIDTH_FACTOR*(STAGE_COUNT-1)'
+                        ' + (OVERLAP_TOP_OVERHEAD + OVERLAP_BOTTOM_OVERHEAD)*WIDTH_FACTOR;' %
+                        (self.var_name, self.lineBuffer.min_block_offset + self.lineBuffer.max_block_offset))
         printer.println('std::vector<std::vector<float, aligned_allocator<float> > > %ss;' % self.var_name)
         with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
             printer.println('%ss.emplace_back(%s_buffer_size, 0);' % (self.var_name, self.var_name))
@@ -357,24 +258,28 @@ class InputBufferConfig:
         with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
 
             with printer.ifel_('i == 0'):
-                printer.println('fill_buffer(%ss[i].data() + %d*GRID_COLS + TOP_APPEND*GRID_COLS,'
-                                ' %s_file, 0, GRID_COLS*PART_ROWS + %d*GRID_COLS + BOTTOM_APPEND*GRID_COLS);'
-                                % (self.var_name, self.lineBuffer.min_row,
-                                   self.var_name, self.lineBuffer.max_row))
+                printer.println('fill_buffer(%ss[i].data() + %d*WIDTH_FACTOR/*min_block_offsets*/ + TOP_APPEND*WIDTH_FACTOR*(STAGE_COUNT-1) '
+                                '+ OVERLAP_TOP_OVERHEAD*WIDTH_FACTOR,'
+                                ' %s_file, 0, GRID_COLS*PART_ROWS + %d*WIDTH_FACTOR/*max_block_offsets*/ + BOTTOM_APPEND*WIDTH_FACTOR*(STAGE_COUNT-1) '
+                                '+ OVERLAP_BOTTOM_OVERHEAD*WIDTH_FACTOR);'
+                                % (self.var_name, self.lineBuffer.min_block_offset,
+                                   self.var_name, self.lineBuffer.max_block_offset))
 
             with printer.elifel_('i == KERNEL_COUNT - 1'):
-                printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*GRID_COLS '
-                                '- TOP_APPEND*GRID_COLS'
-                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS + TOP_APPEND*GRID_COLS);'
-                                % (self.var_name, self.var_name, self.lineBuffer.min_row,
-                                   self.lineBuffer.min_row))
+                printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*WIDTH_FACTOR/*min_block_offsets*/ '
+                                '- TOP_APPEND*WIDTH_FACTOR*(STAGE_COUNT-1) - OVERLAP_TOP_OVERHEAD*WIDTH_FACTOR, '
+                                'GRID_COLS*PART_ROWS + %d*WIDTH_FACTOR/*min_block_offsets*/ + TOP_APPEND*WIDTH_FACTOR*(STAGE_COUNT-1) '
+                                '+ OVERLAP_TOP_OVERHEAD*WIDTH_FACTOR);'
+                                % (self.var_name, self.var_name, self.lineBuffer.min_block_offset,
+                                   self.lineBuffer.min_block_offset))
 
             with printer.else_():
-                printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*GRID_COLS '
-                                '- TOP_APPEND*GRID_COLS'
-                                ', GRID_COLS*PART_ROWS + %d*GRID_COLS + (TOP_APPEND+BOTTOM_APPEND)*GRID_COLS);'
-                                % (self.var_name, self.var_name, self.lineBuffer.min_row,
-                                   self.lineBuffer.max_row + self.lineBuffer.min_row))
+                printer.println('fill_buffer(%ss[i].data(), %s_file, GRID_COLS*PART_ROWS*i - %d*WIDTH_FACTOR/*min_block_offsets*/ '
+                                '- TOP_APPEND*WIDTH_FACTOR*(STAGE_COUNT-1) - OVERLAP_TOP_OVERHEAD, '
+                                'GRID_COLS*PART_ROWS + %d*WIDTH_FACTOR + (TOP_APPEND+BOTTOM_APPEND)*WIDTH_FACTOR*(STAGE_COUNT-1) '
+                                '+ (OVERLAP_TOP_OVERHEAD + OVERLAP_BOTTOM_OVERHEAD)*WIDTH_FACTOR);'
+                                % (self.var_name, self.var_name, self.lineBuffer.min_block_offset,
+                                   self.lineBuffer.max_block_offset + self.lineBuffer.min_block_offset))
 
         printer.println()
 
@@ -384,15 +289,16 @@ class InputBufferConfig:
 
 
 class OutputBufferConfig:
-    def __init__(self, var_name, min_row, max_row):
+    def __init__(self, var_name, min_block_offset, max_block_offset):
         self.var_name = var_name
-        self.min_row = min_row
-        self.max_row = max_row
+        self.min_block_offset = min_block_offset
+        self.max_block_offset = max_block_offset
 
     def print_c_buffer_def(self, printer:Printer):
-        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*GRID_COLS '
-                        '+ (TOP_APPEND+BOTTOM_APPEND)*GRID_COLS;'
-                        % (self.var_name, self.max_row + self.min_row))
+        printer.println('unsigned int %s_buffer_size = GRID_COLS*PART_ROWS + %d*WIDTH_FACTOR'
+                        ' + (TOP_APPEND+BOTTOM_APPEND)*WIDTH_FACTOR*(STAGE_COUNT-1)'
+                        ' + (OVERLAP_TOP_OVERHEAD + OVERLAP_BOTTOM_OVERHEAD)*WIDTH_FACTOR;' %
+                        (self.var_name, self.min_block_offset + self.max_block_offset))
         printer.println('std::vector<std::vector<float, aligned_allocator<float> > > %ss;' % self.var_name)
         with printer.for_('int i = 0', 'i < KERNEL_COUNT', 'i++'):
             printer.println('%ss.emplace_back(%s_buffer_size, 0);' % (self.var_name, self.var_name))

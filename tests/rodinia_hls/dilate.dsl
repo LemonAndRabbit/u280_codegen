@@ -2,7 +2,7 @@ KERNEL: DILATE
 COUNT: 15
 ITERATE: 1
 BOARDER: overlap
-input s(7680, 1024)
+input s(9720, 1024)
 local t1 = if(s(0,2)>s(1,1), s(0,2), s(1,1))
 local t2 = if(s(1,2)>s(1,3), s(1,2), s(1,3))
 local t3 = if(s(2,0)>s(2,1), s(2,0), s(2,1))

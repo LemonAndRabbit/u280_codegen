@@ -35,13 +35,23 @@ def find_relative_ref_position(stmt, relative_position, acc_positions):
                 ref_positions[node.name].add(cal_relative(node.idx, relative_position))
             elif hasattr(node, 'operand') or hasattr(node, 'arg'):
                 if hasattr(node, 'operand'):
-                    for operand in node.operand:
+                    if hasattr(node.operand, '__iter__'):
+                        for operand in node.operand:
+                            temp_positions = find_in_a_place(operand, ref_positions)
+                            for name, positions in temp_positions.items():
+                                if name not in ref_positions.keys():
+                                    ref_positions[name] = set()
+                                for position in positions:
+                                    ref_positions[name].add(position)
+                    else:
+                        operand = node.operand
                         temp_positions = find_in_a_place(operand, ref_positions)
                         for name, positions in temp_positions.items():
                             if name not in ref_positions.keys():
                                 ref_positions[name] = set()
                             for position in positions:
                                 ref_positions[name].add(position)
+
                 if hasattr(node, 'arg'):
                     for arg in node.arg:
                         temp_positions = find_in_a_place(arg, ref_positions)

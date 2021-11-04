@@ -15,8 +15,8 @@ def hls_codegen(stencil):
         input_buffer_configs[input_var] = (buffer.InputBufferConfig(input_var, refs_by_offset, 16, stencil.size))
 
     output_buffer_config = buffer.OutputBufferConfig(stencil.output_var,
-                                                     input_buffer_configs[stencil.input_vars[-1]].lineBuffer.min_row,
-                                                     input_buffer_configs[stencil.input_vars[-1]].lineBuffer.max_row)
+                                                     input_buffer_configs[stencil.input_vars[-1]].lineBuffer.min_block_offset,
+                                                     input_buffer_configs[stencil.input_vars[-1]].lineBuffer.max_block_offset)
 
     with open('%s.h' % stencil.app_name, 'w') as file:
         head_gen.head_gen(stencil, file, output_buffer_config)

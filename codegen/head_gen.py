@@ -34,15 +34,24 @@ def head_gen(stencil, output_file, output_buffer_config):
     printer.println('#define PARA_FACTOR 16')
     printer.println()
 
+    printer.println('#define STAGE_COUNT %d' % stencil.repeat_count)
+    printer.println(
+        '#define TOP_APPEND %d' % output_buffer_config.min_block_offset)
+    printer.println(
+        '#define BOTTOM_APPEND %d' % output_buffer_config.max_block_offset)
+
     if stencil.boarder_type == 'streaming':
         printer.println('#include "ap_axi_sdata.h"')
         printer.println('typedef ap_axiu<DWIDTH, 0, 0, 0> pkt;')
 
     if stencil.boarder_type == 'overlap':
-        printer.println('#define TOP_APPEND %d' % ((stencil.iterate-1)*output_buffer_config.min_row))
-        printer.println('#define BOTTOM_APPEND %d' % ((stencil.iterate-1)*output_buffer_config.max_row))
+        printer.println('#define OVERLAP_TOP_OVERHEAD %d' % ((stencil.iterate-1)*stencil.repeat_count*output_buffer_config.min_block_offset))
+        printer.println('#define OVERLAP_BOTTOM_OVERHEAD %d' % ((stencil.iterate-1)*stencil.repeat_count*output_buffer_config.max_block_offset))
     else:
-        printer.println('#define TOP_APPEND 0')
-        printer.println('#define BOTTOM_APPEND 0')
+        printer.println('#define OVERLAP_TOP_OVERHEAD 0')
+        printer.println('#define OVERLAP_BOTTOM_OVERHEAD 0')
+
+    printer.println('#define DECRE_TOP_APPEND %d' % output_buffer_config.min_block_offset)
+    printer.println('#define DECRE_BOTTOM_APPEND %d' % output_buffer_config.max_block_offset)
 
     printer.println('#endif')

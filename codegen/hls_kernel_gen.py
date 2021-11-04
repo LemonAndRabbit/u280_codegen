@@ -1,3 +1,4 @@
+import copy
 import logging
 from itertools import chain
 
@@ -13,7 +14,7 @@ def kernel_gen(stencil, output_file, input_buffer_configs, output_buffer_config,
     _logger.info('generate kernel code as %s', output_file.name)
     printer = codegen_utils.Printer(output_file)
 
-    includes = ['<hls_stream.h>', '"%s.h"' % stencil.app_name]
+    includes = ['<hls_stream.h>', '"math.h"', '"%s.h"' % stencil.app_name]
     for include in includes:
         printer.println('#include %s' % include)
 
@@ -24,7 +25,19 @@ def kernel_gen(stencil, output_file, input_buffer_configs, output_buffer_config,
     _print_stencil_kernel(stencil, printer)
 
     printer.println()
-    _print_backbone(stencil, printer, input_buffer_configs)
+    if stencil.repeat_count == 1:
+        _print_backbone(stencil, printer, input_buffer_configs)
+    elif stencil.repeat_count == 2:
+        _print_stage_in(stencil, printer, input_buffer_configs)
+        _print_stage_out(stencil, printer, input_buffer_configs, 1)
+        _print_multistage_backbone(stencil, printer)
+    else:
+        _print_stage_in(stencil, printer, input_buffer_configs)
+        for i in range(1, stencil.repeat_count-1):
+            _print_stage_mid(stencil, printer, input_buffer_configs, i)
+        _print_stage_out(stencil, printer, input_buffer_configs, stencil.repeat_count-1)
+        _print_multistage_backbone(stencil, printer)
+
 
     _print_stream_function(printer, output_buffer_config, position)
 
@@ -57,6 +70,8 @@ def _print_stencil_kernel(stencil: core.Stencil, printer: codegen_utils.Printer)
     for name, positions in all_refs.items():
         for position in positions:
             ports.append("float %s_%s" % (name, '_'.join(codegen_utils.idx2str(idx) for idx in position)))
+    for scalar in stencil.scalar_vars:
+        ports.append('float %s' % scalar)
 
     printer.print_func('static float %s_stencil_kernel' % stencil.app_name, ports)
     printer.do_scope('stencil kernel definition')
@@ -93,6 +108,8 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
         input_def.append('INTERFACE_WIDTH *%s' % input_var)
 
     input_def.append('INTERFACE_WIDTH *%s' % stencil.output_var)
+    for scalar in stencil.scalar_vars:
+        input_def.append('float %s' % scalar)
 
     printer.print_func('static void %s' % stencil.app_name, input_def)
     printer.do_scope('stencil kernel definition')
@@ -106,7 +123,7 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
 
     printer.println('MAJOR_LOOP:')
     with printer.for_('int i = 0',
-                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + (TOP_APPEND+BOTTOM_APPEND)*GRID_COLS/WIDTH_FACTOR',
+                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + (OVERLAP_TOP_OVERHEAD+OVERLAP_BOTTOM_OVERHEAD)',
                       'i++'):
         printer.println('#pragma HLS pipeline II=1')
         printer.println()
@@ -140,21 +157,309 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
                                                                         position)))
 
             printer.println()
+            input_for_kernel = []
+            for port in ports:
+                input_for_kernel.append(port + '[k]')
+            for scalar in stencil.scalar_vars:
+                input_for_kernel.append(scalar)
             printer.println('float result = %s_stencil_kernel(%s);'
-                            % (stencil.app_name, ', '.join(map(lambda x: x + '[k]', all_ports))))
-            printer.println('%s[i + %d*GRID_COLS/WIDTH_FACTOR].range(idx_k+31, idx_k) = *((uint32_t *)(&result));'
-                            % (stencil.output_var,
-                               input_buffer_configs[stencil.input_vars[-1]].lineBuffer.min_row))
+                            % (stencil.app_name, ', '.join(input_for_kernel)))
+            printer.println('%s[i + TOP_APPEND + OVERLAP_TOP_OVERHEAD].range(idx_k+31, idx_k) = *((uint32_t *)(&result));'
+                            % stencil.output_var)
 
         for buffer_instance in input_buffer_configs.values():
             buffer_instance.print_data_movement(printer)
     printer.println()
 
-    '''
+
     if stencil.iterate > 1:
         for buffer_instance in input_buffer_configs.values():
             buffer_instance.print_pop_out(printer)
-    '''
+
+
+    printer.println('return;')
+
+    printer.un_scope()
+
+def _print_multistage_backbone(stencil: core.Stencil, printer: codegen_utils.Printer):
+    input_names = stencil.input_vars
+    input_def = []
+    for input_var in stencil.input_vars:
+        input_def.append('INTERFACE_WIDTH *%s' % input_var)
+
+    input_def.append('INTERFACE_WIDTH *%s' % stencil.output_var)
+    for scalar in stencil.scalar_vars:
+        input_def.append('float %s' % scalar)
+
+    printer.print_func('static void %s' % stencil.app_name, input_def)
+    printer.do_scope('multi-stage backbone definition')
+    printer.println('#pragma HLS dataflow')
+
+    mid_instance_count = stencil.repeat_count - 1
+    printer.println('static hls::stream<INTERFACE_WIDTH> '
+                    + ', '.join('temp_out_%d' % i for i in range(mid_instance_count))
+                    + ';')
+
+
+    parameter = codegen_utils.get_parameter_printed(stencil.input_vars, 'temp_out_0', stencil.scalar_vars)
+    printer.println('stage_in(%s);' % parameter)
+    for i in range(1, stencil.repeat_count - 1):
+        parameter = codegen_utils.get_parameter_printed(['temp_out_%d' % (i-1),], 'temp_out_%d' % i, stencil.scalar_vars)
+        printer.println('stage_mid_%d(%s);' % (i, parameter))
+    parameter = codegen_utils.get_parameter_printed(['temp_out_%d' % (stencil.repeat_count-2),], stencil.output_var, stencil.scalar_vars)
+    printer.println('stage_out(%s);' % parameter)
+
+    printer.println('return;')
+
+    printer.un_scope()
+
+def _print_stage_in(stencil: core.Stencil, printer: codegen_utils.Printer, input_buffer_configs):
+    input_names = stencil.input_vars
+    input_def = []
+    for input_var in stencil.input_vars:
+        input_def.append('INTERFACE_WIDTH *%s' % input_var)
+
+    input_def.append('hls::stream<INTERFACE_WIDTH> &%s' % stencil.output_var)
+    for scalar in stencil.scalar_vars:
+        input_def.append('float %s' % scalar)
+
+    printer.print_func('static void stage_in', input_def)
+    printer.do_scope('stencil kernel definition')
+    for buffer_instance in input_buffer_configs.values():
+        buffer_instance.print_define_buffer(printer)
+        printer.println()
+
+    for buffer_instance in input_buffer_configs.values():
+        buffer_instance.print_init_buffer(printer)
+        printer.println()
+
+    printer.println('INTERFACE_WIDTH temp_out;')
+
+    printer.println('MAJOR_LOOP:')
+    with printer.for_('int i = 0',
+                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + (OVERLAP_TOP_OVERHEAD+OVERLAP_BOTTOM_OVERHEAD) '
+                        '+ (TOP_APPEND+BOTTOM_APPEND)*(STAGE_COUNT-1)',
+                      'i++'):
+        printer.println('#pragma HLS pipeline II=1')
+        printer.println()
+        printer.println('COMPUTE_LOOP:')
+        with printer.for_('int k = 0', 'k < PARA_FACTOR', 'k++'):
+            printer.println('#pragma HLS unroll')
+
+            all_refs = stencil.all_refs
+            all_ports = []
+            for name, positions in all_refs.items():
+                ports = []
+                for position in positions:
+                    ports.append("%s_%s" % (name, '_'.join(codegen_utils.idx2str(idx) for idx in position)))
+                    all_ports.append("%s_%s" % (name, '_'.join(codegen_utils.idx2str(idx) for idx in position)))
+                printer.println('float ' + ', '.join(map(lambda x: x + '[PARA_FACTOR]', ports)) + ';')
+                for port in ports:
+                    printer.println('#pragma HLS array_partition variable=%s complete dim=0'
+                                    % port)
+                printer.println()
+
+            printer.println()
+            printer.println('unsigned int idx_k = k << 5;')
+            printer.println()
+
+            for name, positions in all_refs.items():
+                buffer_instance = input_buffer_configs[name]
+                for position in positions:
+                    buffer_instance.print_data_retrieve_with_unroll(printer, position,
+                                                                    "%s_%s" % (name, '_'.join(
+                                                                        codegen_utils.idx2str(idx) for idx in
+                                                                        position)))
+
+            printer.println()
+            input_for_kernel = []
+            for port in ports:
+                input_for_kernel.append(port + '[k]')
+            for scalar in stencil.scalar_vars:
+                input_for_kernel.append(scalar)
+            printer.println('float result = %s_stencil_kernel(%s);'
+                            % (stencil.app_name, ', '.join(input_for_kernel)))
+            printer.println('temp_out.range(idx_k+31, idx_k) = *((uint32_t *)(&result));')
+
+        printer.println('%s << temp_out;' % stencil.output_var)
+
+        for buffer_instance in input_buffer_configs.values():
+            buffer_instance.print_data_movement(printer)
+    printer.println()
+
+
+    if stencil.iterate > 1:
+        for buffer_instance in input_buffer_configs.values():
+            buffer_instance.print_pop_out(printer)
+
+
+    printer.println('return;')
+
+    printer.un_scope()
+
+def _print_stage_mid(stencil: core.Stencil, printer: codegen_utils.Printer, input_buffer_configs, decrement: int):
+    input_names = stencil.input_vars
+    input_def = []
+    for input_var in stencil.input_vars:
+        input_def.append('hls::stream<INTERFACE_WIDTH> &%s' % input_var)
+
+    input_def.append('hls::stream<INTERFACE_WIDTH> &%s' % stencil.output_var)
+    for scalar in stencil.scalar_vars:
+        input_def.append('float %s' % scalar)
+
+    printer.print_func('static void stage_mid_%d' % decrement, input_def)
+    printer.do_scope('stencil kernel definition')
+    for buffer_instance in input_buffer_configs.values():
+        buffer_instance.print_define_buffer(printer)
+        printer.println()
+
+    for buffer_instance in input_buffer_configs.values():
+        buffer_instance.print_init_buffer_from_stream(printer)
+        printer.println()
+
+    printer.println('INTERFACE_WIDTH temp_out;')
+
+    printer.println('MAJOR_LOOP:')
+    with printer.for_('int i = 0',
+                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + (OVERLAP_TOP_OVERHEAD+OVERLAP_BOTTOM_OVERHEAD) '
+                        '+ (TOP_APPEND+BOTTOM_APPEND)*(STAGE_COUNT-1) '
+                        '- (DECRE_TOP_APPEND+DECRE_BOTTOM_APPEND)*%d' % decrement,
+                      'i++'):
+        printer.println('#pragma HLS pipeline II=1')
+        printer.println()
+        printer.println('COMPUTE_LOOP:')
+        with printer.for_('int k = 0', 'k < PARA_FACTOR', 'k++'):
+            printer.println('#pragma HLS unroll')
+
+            all_refs = stencil.all_refs
+            all_ports = []
+            for name, positions in all_refs.items():
+                ports = []
+                for position in positions:
+                    ports.append("%s_%s" % (name, '_'.join(codegen_utils.idx2str(idx) for idx in position)))
+                    all_ports.append("%s_%s" % (name, '_'.join(codegen_utils.idx2str(idx) for idx in position)))
+                printer.println('float ' + ', '.join(map(lambda x: x + '[PARA_FACTOR]', ports)) + ';')
+                for port in ports:
+                    printer.println('#pragma HLS array_partition variable=%s complete dim=0'
+                                    % port)
+                printer.println()
+
+            printer.println()
+            printer.println('unsigned int idx_k = k << 5;')
+            printer.println()
+
+            for name, positions in all_refs.items():
+                buffer_instance = input_buffer_configs[name]
+                for position in positions:
+                    buffer_instance.print_data_retrieve_with_unroll(printer, position,
+                                                                        "%s_%s" % (name, '_'.join(
+                                                                            codegen_utils.idx2str(idx) for idx in
+                                                                            position)))
+
+            printer.println()
+            input_for_kernel = []
+            for port in ports:
+                input_for_kernel.append(port + '[k]')
+            for scalar in stencil.scalar_vars:
+                input_for_kernel.append(scalar)
+            printer.println('float result = %s_stencil_kernel(%s);'
+                            % (stencil.app_name, ', '.join(input_for_kernel)))
+            printer.println('temp_out.range(idx_k+31, idx_k) = *((uint32_t *)(&result));')
+
+        printer.println('%s << temp_out;' % stencil.output_var)
+
+        for buffer_instance in input_buffer_configs.values():
+            buffer_instance.print_data_movement_from_stream(printer)
+    printer.println()
+
+
+    if stencil.iterate > 1:
+        for buffer_instance in input_buffer_configs.values():
+            buffer_instance.print_pop_out(printer)
+
+
+    printer.println('return;')
+
+    printer.un_scope()
+
+
+def _print_stage_out(stencil: core.Stencil, printer: codegen_utils.Printer, input_buffer_configs, decrement: int):
+    input_names = stencil.input_vars
+    input_def = []
+    for input_var in stencil.input_vars:
+        input_def.append('hls::stream<INTERFACE_WIDTH> &%s' % input_var)
+
+    input_def.append('INTERFACE_WIDTH* %s' % stencil.output_var)
+    for scalar in stencil.scalar_vars:
+        input_def.append('float %s' % scalar)
+
+    printer.print_func('static void stage_out', input_def)
+    printer.do_scope('stencil kernel definition')
+    for buffer_instance in input_buffer_configs.values():
+        buffer_instance.print_define_buffer(printer)
+        printer.println()
+
+    for buffer_instance in input_buffer_configs.values():
+        buffer_instance.print_init_buffer_from_stream(printer)
+        printer.println()
+
+    printer.println('MAJOR_LOOP:')
+    with printer.for_('int i = 0',
+                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + (OVERLAP_TOP_OVERHEAD+OVERLAP_BOTTOM_OVERHEAD) '
+                        '+ (TOP_APPEND+BOTTOM_APPEND)*(STAGE_COUNT-1) '
+                        '- (DECRE_TOP_APPEND+DECRE_BOTTOM_APPEND)*%d' % decrement,
+                      'i++'):
+        printer.println('#pragma HLS pipeline II=1')
+        printer.println()
+        printer.println('COMPUTE_LOOP:')
+        with printer.for_('int k = 0', 'k < PARA_FACTOR', 'k++'):
+            printer.println('#pragma HLS unroll')
+
+            all_refs = stencil.all_refs
+            all_ports = []
+            for name, positions in all_refs.items():
+                ports = []
+                for position in positions:
+                    ports.append("%s_%s" % (name, '_'.join(codegen_utils.idx2str(idx) for idx in position)))
+                    all_ports.append("%s_%s" % (name, '_'.join(codegen_utils.idx2str(idx) for idx in position)))
+                printer.println('float ' + ', '.join(map(lambda x: x + '[PARA_FACTOR]', ports)) + ';')
+                for port in ports:
+                    printer.println('#pragma HLS array_partition variable=%s complete dim=0'
+                                    % port)
+                printer.println()
+
+            printer.println()
+            printer.println('unsigned int idx_k = k << 5;')
+            printer.println()
+
+            for name, positions in all_refs.items():
+                buffer_instance = input_buffer_configs[name]
+                for position in positions:
+                    buffer_instance.print_data_retrieve_with_unroll(printer, position,
+                                                                    "%s_%s" % (name, '_'.join(
+                                                                        codegen_utils.idx2str(idx) for idx in
+                                                                        position)))
+
+            printer.println()
+            input_for_kernel = []
+            for port in ports:
+                input_for_kernel.append(port + '[k]')
+            for scalar in stencil.scalar_vars:
+                input_for_kernel.append(scalar)
+            printer.println('float result = %s_stencil_kernel(%s);'
+                            % (stencil.app_name, ', '.join(input_for_kernel)))
+            printer.println('%s[i + TOP_APPEND*STAGE_COUNT + OVERLAP_TOP_OVERHEAD].range(idx_k+31, idx_k) = *((uint32_t *)(&result));'
+                            % stencil.output_var)
+
+        for buffer_instance in input_buffer_configs.values():
+            buffer_instance.print_data_movement_from_stream(printer)
+    printer.println()
+
+
+    if stencil.iterate > 1:
+        for buffer_instance in input_buffer_configs.values():
+            buffer_instance.print_pop_out(printer)
+
 
     printer.println('return;')
 
@@ -166,7 +471,9 @@ def _print_interface(stencil: core.Stencil, printer: codegen_utils.Printer):
     for var in stencil.input_vars:
         interfaces.append(var)
     interfaces.append(stencil.output_var)
-    printer.print_func('void unikernel', map(lambda x: 'INTERFACE_WIDTH *%s' % x, interfaces))
+    printer.print_func('void unikernel', chain(map(lambda x: 'INTERFACE_WIDTH *%s' % x, interfaces)
+                                               , map(lambda x: 'float %s' % x, stencil.scalar_vars)
+                                               ))
     printer.do_scope()
     for interface in interfaces:
         printer.println('#pragma HLS INTERFACE m_axi port=%s offset=slave bundle=%s1'
@@ -185,17 +492,26 @@ def _print_interface(stencil: core.Stencil, printer: codegen_utils.Printer):
 
     printer.println()
 
+    parameters = copy.copy(interfaces)
+    parameters.extend(stencil.scalar_vars)
+    parameters2 = copy.copy(interfaces)
+
+    temp = parameters2[-2]
+    parameters2[-2] = parameters2[-1]
+    parameters2[-1] = temp
+    parameters2.extend(stencil.scalar_vars)
+
     if stencil.iterate > 1:
         printer.println("int i;")
         with printer.for_('i=0', 'i<ITERATION', 'i++'):
             printer.println('if(i%2==0)')
-            printer.println('   %s(%s);' % (stencil.app_name, ', '.join(interfaces)))
+            printer.println('   %s(%s);' % (stencil.app_name, ', '.join(parameters)))
             printer.println('else')
-            printer.println('   %s(%s, %s);' % (stencil.app_name, ', '.join(interfaces[1:]), interfaces[0]))
+            printer.println('   %s(%s);' % (stencil.app_name, ', '.join(parameters2)))
         if stencil.iterate % 2 != 0:
-            printer.println('%s(%s);' % (stencil.app_name, ', '.join(interfaces)))
+            printer.println('%s(%s);' % (stencil.app_name, ', '.join(parameters)))
     else:
-        printer.println('%s(%s);' % (stencil.app_name, ', '.join(interfaces)))
+        printer.println('%s(%s);' % (stencil.app_name, ', '.join(parameters)))
 
     printer.println('return;')
     printer.un_scope()
@@ -209,10 +525,12 @@ def _print_stream_interface(stencil: core.Stencil, printer: codegen_utils.Printe
 
     if position == 'up' or position == 'down':
         printer.print_func('void %skernel' % position, chain(map(lambda x: 'INTERFACE_WIDTH *%s' % x, interfaces)
-                           , ['hls::stream<pkt> &stream_to', 'hls::stream<pkt> &stream_from']))
+                            , map(lambda x: 'float %s' % x, stencil.scalar_vars)
+                            , ['hls::stream<pkt> &stream_to', 'hls::stream<pkt> &stream_from']))
     else:
         printer.print_func('void %skernel' % position, chain(map(lambda x: 'INTERFACE_WIDTH *%s' % x, interfaces)
-                           , ['hls::stream<pkt> &stream_to_up', 'hls::stream<pkt> &stream_from_up',
+                            , map(lambda x: 'float %s' % x, stencil.scalar_vars)
+                            , ['hls::stream<pkt> &stream_to_up', 'hls::stream<pkt> &stream_from_up',
                               'hls::stream<pkt> &stream_to_down', 'hls::stream<pkt> &stream_from_down']))
 
     printer.do_scope()
@@ -233,10 +551,19 @@ def _print_stream_interface(stencil: core.Stencil, printer: codegen_utils.Printe
 
     printer.println()
 
+    parameters = copy.copy(interfaces)
+    parameters.extend(stencil.scalar_vars)
+
+    parameters2 = copy.copy(interfaces)
+    temp = parameters2[-2]
+    parameters2[-2] = parameters2[-1]
+    parameters2[-1] = temp
+    parameters2.extend(stencil.scalar_vars)
+
     if stencil.iterate > 1:
         printer.println("int i;")
         with printer.for_('i=0', 'i<ITERATION/2', 'i++'):
-            printer.println('%s(%s);' % (stencil.app_name, ', '.join(interfaces)))
+            printer.println('%s(%s);' % (stencil.app_name, ', '.join(parameters)))
 
             if position == 'up' or position == 'down':
                 printer.println('exchange_stream(%s, stream_to, stream_from);' % interfaces[-1])
@@ -244,7 +571,7 @@ def _print_stream_interface(stencil: core.Stencil, printer: codegen_utils.Printe
                 printer.println('exchange_stream(%s, stream_to_up, stream_from_up, stream_to_down, stream_from_down);'
                                 % interfaces[-1])
 
-            printer.println('%s(%s, %s);' % (stencil.app_name, ', '.join(interfaces[1:]), interfaces[0]))
+            printer.println('%s(%s);' % (stencil.app_name, ', '.join(parameters2)))
 
             if position == 'up' or position == 'down':
                 printer.println('exchange_stream(%s, stream_to, stream_from);' % interfaces[-2])
@@ -253,24 +580,20 @@ def _print_stream_interface(stencil: core.Stencil, printer: codegen_utils.Printe
                                 % interfaces[-2])
 
         if stencil.iterate % 2 != 0:
-            printer.println('%s(%s);' % (stencil.app_name, ', '.join(interfaces)))
+            printer.println('%s(%s);' % (stencil.app_name, ', '.join(parameters)))
     else:
-        printer.println('%s(%s);' % (stencil.app_name, ', '.join(interfaces)))
+        printer.println('%s(%s);' % (stencil.app_name, ', '.join(parameters)))
 
     printer.println('return;')
     printer.un_scope()
 
 
 def _print_stream_function(printer: codegen_utils.Printer, output_buffer_config, position):
-    top_rows = output_buffer_config.min_row
-    bottom_rows = output_buffer_config.max_row
+    min_block_offset = output_buffer_config.min_block_offset
+    max_block_offset = output_buffer_config.max_block_offset
     if position == 'up':
-        printer.println(hls_kernel_codes.up_exchange
-                        % (top_rows, top_rows-top_rows, bottom_rows, top_rows))
+        printer.println(hls_kernel_codes.up_exchange)
     elif position == 'mid':
-        printer.println(hls_kernel_codes.mid_exchange
-                        % (top_rows, bottom_rows, top_rows,
-                           top_rows, top_rows-top_rows, bottom_rows, top_rows))
+        printer.println(hls_kernel_codes.mid_exchange)
     elif position == 'down':
-        printer.println(hls_kernel_codes.down_exchange
-                        % (top_rows, bottom_rows, top_rows))
+        printer.println(hls_kernel_codes.down_exchange)

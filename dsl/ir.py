@@ -190,12 +190,17 @@ class Operand(Node):
     @property
     def c_expr(self):
         for attr in ('call', 'ref', 'num', 'var'):
-            attr = getattr(self, attr)
-            if attr is not None:
-                if hasattr(attr, 'c_expr'):
-                    return attr.c_expr
-                else:
-                    return str(attr)
+            if attr == 'num':
+                attr = getattr(self, attr)
+                if attr is not None:
+                    return '(float)' + str(attr)
+            else:
+                attr = getattr(self, attr)
+                if attr is not None:
+                    if hasattr(attr, 'c_expr'):
+                        return attr.c_expr
+                    else:
+                        return str(attr)
         else:
             return utils.parenthesize(self.expr.c_expr)
 
@@ -227,6 +232,16 @@ class Var(Node):
     def c_expr(self):
         return self.name
 
+class ScalarStmt(Node):
+    SCALAR_ATTRS = ('name', )
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def __str__(self):
+        result = 'scalar float: {}'.format(self.name)
+        return result
+
 class InputStmt(Node):
     SCALAR_ATTRS = ('name', )
     LINEAR_ATTRS = ('size', )
@@ -257,8 +272,8 @@ class OutputStmt(Node):
         return 'output float: {} = {}'.format(self.ref, self.expr)
 
 class Program(Node):
-    SCALAR_ATTRS = ('iterate', 'app_name', 'kernel_count', 'output_stmt', 'boarder_type')
-    LINEAR_ATTRS = ('input_stmts', 'local_stmts')
+    SCALAR_ATTRS = ('iterate', 'app_name', 'kernel_count', 'repeat_count', 'output_stmt', 'boarder_type')
+    LINEAR_ATTRS = ('scalar_stmts', 'input_stmts', 'local_stmts')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -271,7 +286,9 @@ class Program(Node):
             'iterate: {}'.format(self.iterate),
             'boarder type: {}'.format(self.boarder_type),
             'kernel count: {}'.format(self.kernel_count),
+            'repeat count: {}'.format(self.repeat_count),
             'size: {}'.format(self.size),
+            '\n'.join(map(str, self.scalar_stmts)),
             '\n'.join(map(str, self.input_stmts)),
             '\n'.join(map(str, self.local_stmts)),
             str(self.output_stmt)
@@ -279,6 +296,7 @@ class Program(Node):
 
 CLASSES = (
     Program,
+    ScalarStmt,
     InputStmt,
     LocalStmt,
     OutputStmt,
