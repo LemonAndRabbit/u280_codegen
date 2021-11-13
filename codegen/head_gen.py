@@ -45,8 +45,8 @@ def head_gen(stencil, output_file, output_buffer_config):
         printer.println('typedef ap_axiu<DWIDTH, 0, 0, 0> pkt;')
 
     if stencil.boarder_type == 'overlap':
-        printer.println('#define OVERLAP_TOP_OVERHEAD %d' % ((stencil.iterate-1)*stencil.repeat_count*output_buffer_config.min_block_offset))
-        printer.println('#define OVERLAP_BOTTOM_OVERHEAD %d' % ((stencil.iterate-1)*stencil.repeat_count*output_buffer_config.max_block_offset))
+        printer.println('#define OVERLAP_TOP_OVERHEAD %d' % ((stencil.iterate-stencil.repeat_count)*output_buffer_config.min_block_offset))
+        printer.println('#define OVERLAP_BOTTOM_OVERHEAD %d' % ((stencil.iterate-stencil.repeat_count)*output_buffer_config.max_block_offset))
     else:
         printer.println('#define OVERLAP_TOP_OVERHEAD 0')
         printer.println('#define OVERLAP_BOTTOM_OVERHEAD 0')

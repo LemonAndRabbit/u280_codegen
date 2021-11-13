@@ -1,6 +1,7 @@
 KERNEL: DILATE
-COUNT: 15
-ITERATE: 1
+COUNT: 3
+ITERATE: 12
+REPEAT: 6
 BOARDER: overlap
 input s(9720, 1024)
 local t1 = if(s(0,2)>s(1,1), s(0,2), s(1,1))
