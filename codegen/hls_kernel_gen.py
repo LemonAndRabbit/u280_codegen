@@ -283,7 +283,7 @@ def _print_stage_in(stencil: core.Stencil, printer: codegen_utils.Printer, input
 
             # TODO: no guarantee that %s_0_0[k] is retrieved
             printer.println('float result = skip?%s_0_0[k]:%s_stencil_kernel(%s);'
-                            % (stencil.output_var, stencil.app_name, ', '.join(input_for_kernel)))
+                            % (stencil.input_vars[-1], stencil.app_name, ', '.join(input_for_kernel)))
             printer.println('temp_out.range(idx_k+31, idx_k) = *((uint32_t *)(&result));')
 
         printer.println('%s << temp_out;' % stencil.output_var)
@@ -370,7 +370,7 @@ def _print_stage_mid(stencil: core.Stencil, printer: codegen_utils.Printer, inpu
             for scalar in stencil.scalar_vars:
                 input_for_kernel.append(scalar)
             printer.println('float result = skip?%s_0_0[k]:%s_stencil_kernel(%s);'
-                            % (stencil.output_var, stencil.app_name, ', '.join(input_for_kernel)))
+                            % (stencil.input_vars[-1], stencil.app_name, ', '.join(input_for_kernel)))
             printer.println('temp_out.range(idx_k+31, idx_k) = *((uint32_t *)(&result));')
 
         printer.println('%s << temp_out;' % stencil.output_var)
@@ -456,7 +456,7 @@ def _print_stage_out(stencil: core.Stencil, printer: codegen_utils.Printer, inpu
             for scalar in stencil.scalar_vars:
                 input_for_kernel.append(scalar)
             printer.println('float result = skip?%s_0_0[k]:%s_stencil_kernel(%s);'
-                            % (stencil.output_var, stencil.app_name, ', '.join(input_for_kernel)))
+                            % (stencil.input_vars[-1], stencil.app_name, ', '.join(input_for_kernel)))
             printer.println('%s[i + TOP_APPEND*STAGE_COUNT + OVERLAP_TOP_OVERHEAD].range(idx_k+31, idx_k) = *((uint32_t *)(&result));'
                             % stencil.output_var)
 
@@ -511,7 +511,7 @@ def _print_interface(stencil: core.Stencil, printer: codegen_utils.Printer):
     parameters2[-1] = temp
     parameters2.extend(stencil.scalar_vars)
 
-    with printer.for_('int k=0', 'k<10000', 'k++'):
+    with printer.for_('int k=0', 'k<100', 'k++'):
         if stencil.iterate/stencil.repeat_count > 1:
             printer.println("int i;")
             with printer.for_('i=0', 'i<iters', 'i+=STAGE_COUNT'):
