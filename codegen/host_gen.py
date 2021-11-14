@@ -80,6 +80,9 @@ def _print_main(stencil, printer, input_buffer_configs, output_buffer_config):
             printer.println('OCL_CHECK(err, err = kernels[i].setArg(%d, 1.5));' % count)
             count += 1
 
+        # TODO: CHANGE ITERS VALUE
+        printer.println('OCL_CHECK(err, err = kernels[i].setArg(%d, 16));' % count)
+
         printer.println()
 
         for var in stencil.input_vars:
