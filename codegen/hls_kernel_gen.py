@@ -514,8 +514,8 @@ def _print_interface(stencil: core.Stencil, printer: codegen_utils.Printer):
     with printer.for_('int k=0', 'k<10000', 'k++'):
         if stencil.iterate/stencil.repeat_count > 1:
             printer.println("int i;")
-            with printer.for_('i=0', 'i<iters', 'i+=iters'):
-                printer.println('if(i%(2*iters)==0)')
+            with printer.for_('i=0', 'i<iters', 'i+=STAGE_COUNT'):
+                printer.println('if(i%(2*STAGE_COUNT)==0)')
                 printer.println('   %s(%s, i, iters);' % (stencil.app_name, ', '.join(parameters)))
                 printer.println('else')
                 printer.println('   %s(%s, i, iters);' % (stencil.app_name, ', '.join(parameters2)))
@@ -576,7 +576,7 @@ def _print_stream_interface(stencil: core.Stencil, printer: codegen_utils.Printe
         if stencil.iterate/stencil.repeat_count > 1:
             printer.println("int i;")
             # TODO: FIX (ITERATION*2) BUG IN THE MASTER BRANCH
-            with printer.for_('i=0', 'i<iters', 'i+=iters'):
+            with printer.for_('i=0', 'i<iters', 'i+=STAGE_COUNT'):
                 printer.println('if(i%(2*STAGE_COUNT)==0)')
                 printer.println('\t%s(%s, i, iters);' % (stencil.app_name, ', '.join(parameters)))
 
