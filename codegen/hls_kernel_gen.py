@@ -99,7 +99,6 @@ def _print_stencil_kernel(stencil: core.Stencil, printer: codegen_utils.Printer)
 
     printer.un_scope()
 
-# TODO: add skip parameter to 1-stage backbone
 def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input_buffer_configs):
     input_names = stencil.input_vars
     input_def = []
@@ -109,6 +108,9 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
     input_def.append('INTERFACE_WIDTH *%s' % stencil.output_var)
     for scalar in stencil.scalar_vars:
         input_def.append('float %s' % scalar)
+
+    input_def.append('int useless')
+    input_def.append('int iters')
 
     printer.print_func('static void %s' % stencil.app_name, input_def)
     printer.do_scope('stencil kernel definition')
@@ -120,9 +122,14 @@ def _print_backbone(stencil: core.Stencil, printer: codegen_utils.Printer, input
         buffer_instance.print_init_buffer(printer)
         printer.println()
 
+    if stencil.boarder_type == 'overlap':
+        append = '(TOP_APPEND+BOTTOM_APPEND)*(iters-1)'
+    else:
+        append = '0'
+
     printer.println('MAJOR_LOOP:')
     with printer.for_('int i = 0',
-                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + (OVERLAP_TOP_OVERHEAD+OVERLAP_BOTTOM_OVERHEAD)',
+                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + ' + append,
                       'i++'):
         printer.println('#pragma HLS pipeline II=1')
         printer.println()
@@ -239,9 +246,14 @@ def _print_stage_in(stencil: core.Stencil, printer: codegen_utils.Printer, input
 
     printer.println('INTERFACE_WIDTH temp_out;')
 
+    if stencil.boarder_type == 'overlap':
+        append = '(TOP_APPEND+BOTTOM_APPEND)*(iters-1) '
+    else:
+        append = '(TOP_APPEND+BOTTOM_APPEND)*(STAGE_COUNT-1) '
+
     printer.println('MAJOR_LOOP:')
     with printer.for_('int i = 0',
-                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + (TOP_APPEND+BOTTOM_APPEND)*(iters-1)',
+                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + ' + append,
                       'i++'):
         printer.println('#pragma HLS pipeline II=1')
         printer.println()
@@ -327,10 +339,15 @@ def _print_stage_mid(stencil: core.Stencil, printer: codegen_utils.Printer, inpu
 
     printer.println('INTERFACE_WIDTH temp_out;')
 
+    if stencil.boarder_type == 'overlap':
+        append = '(TOP_APPEND+BOTTOM_APPEND)*(iters-1) '
+    else:
+        append = '(TOP_APPEND+BOTTOM_APPEND)*(STAGE_COUNT-1) '
+
     printer.println('MAJOR_LOOP:')
     with printer.for_('int i = 0',
-                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + (TOP_APPEND+BOTTOM_APPEND)*(iters-1)'
-                        '- (DECRE_TOP_APPEND+DECRE_BOTTOM_APPEND)*%d' % decrement,
+                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + ' + append +
+                        ' - (DECRE_TOP_APPEND+DECRE_BOTTOM_APPEND)*%d' % decrement,
                       'i++'):
         printer.println('#pragma HLS pipeline II=1')
         printer.println()
@@ -413,9 +430,14 @@ def _print_stage_out(stencil: core.Stencil, printer: codegen_utils.Printer, inpu
         buffer_instance.print_init_buffer_from_stream(printer)
         printer.println()
 
+    if stencil.boarder_type == 'overlap':
+        append = '(TOP_APPEND+BOTTOM_APPEND)*(iters-1) '
+    else:
+        append = '(TOP_APPEND+BOTTOM_APPEND)*(STAGE_COUNT-1) '
+
     printer.println('MAJOR_LOOP:')
     with printer.for_('int i = 0',
-                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + (TOP_APPEND+BOTTOM_APPEND)*(iters-1)'
+                      'i < GRID_COLS/WIDTH_FACTOR*PART_ROWS + ' + append +
                         '- (DECRE_TOP_APPEND+DECRE_BOTTOM_APPEND)*%d' % decrement,
                       'i++'):
         printer.println('#pragma HLS pipeline II=1')
@@ -535,14 +557,14 @@ def _print_stream_interface(stencil: core.Stencil, printer: codegen_utils.Printe
     if position == 'up' or position == 'down':
         printer.print_func('void %skernel' % position, chain(map(lambda x: 'INTERFACE_WIDTH *%s' % x, interfaces)
                             , map(lambda x: 'float %s' % x, stencil.scalar_vars)
-                            , ['hls::stream<pkt> &stream_to', 'hls::stream<pkt> &stream_from']
-                            , ['iters',]))
+                            , ['int iters', ]
+                            , ['hls::stream<pkt> &stream_to', 'hls::stream<pkt> &stream_from']))
     else:
         printer.print_func('void %skernel' % position, chain(map(lambda x: 'INTERFACE_WIDTH *%s' % x, interfaces)
                             , map(lambda x: 'float %s' % x, stencil.scalar_vars)
+                            , ['int iters',]
                             , ['hls::stream<pkt> &stream_to_up', 'hls::stream<pkt> &stream_from_up',
-                              'hls::stream<pkt> &stream_to_down', 'hls::stream<pkt> &stream_from_down']
-                            , ['iters',]))
+                              'hls::stream<pkt> &stream_to_down', 'hls::stream<pkt> &stream_from_down']))
 
     printer.do_scope()
     for interface in interfaces:
@@ -571,13 +593,21 @@ def _print_stream_interface(stencil: core.Stencil, printer: codegen_utils.Printe
     parameters2[-1] = temp
     parameters2.extend(stencil.scalar_vars)
 
+
+    printer.println('//for correct analysis')
+    if position == 'up' or position == 'down':
+        printer.println('exchange_stream(%s, stream_to, stream_from);' % interfaces[-1])
+    else:
+        printer.println('exchange_stream(%s, stream_to_up, stream_from_up, stream_to_down, stream_from_down);'
+                        % interfaces[-1])
+
     with printer.for_('int k=0', 'k<1000', 'k++'):
 
         if stencil.iterate/stencil.repeat_count > 1:
             printer.println("int i;")
             # TODO: FIX (ITERATION*2) BUG IN THE MASTER BRANCH
             with printer.for_('i=0', 'i<iters', 'i+=STAGE_COUNT'):
-                printer.println('if(i%(2*STAGE_COUNT)==0)')
+                printer.println('if(i%(2*STAGE_COUNT)==0){')
                 printer.println('\t%s(%s, i, iters);' % (stencil.app_name, ', '.join(parameters)))
 
                 if position == 'up' or position == 'down':
@@ -585,7 +615,7 @@ def _print_stream_interface(stencil: core.Stencil, printer: codegen_utils.Printe
                 else:
                     printer.println('\texchange_stream(%s, stream_to_up, stream_from_up, stream_to_down, stream_from_down);'
                                     % interfaces[-1])
-                printer.println('else')
+                printer.println('} else {')
                 printer.println('\t%s(%s, i, iters);' % (stencil.app_name, ', '.join(parameters2)))
 
                 if position == 'up' or position == 'down':
@@ -593,9 +623,9 @@ def _print_stream_interface(stencil: core.Stencil, printer: codegen_utils.Printe
                 else:
                     printer.println('\texchange_stream(%s, stream_to_up, stream_from_up, stream_to_down, stream_from_down);'
                                     % interfaces[-2])
-
+                printer.println('}')
         else:
-            printer.println('%s(%s, 0);' % (stencil.app_name, ', '.join(parameters)))
+            printer.println('%s(%s, 0, iters);' % (stencil.app_name, ', '.join(parameters)))
 
     printer.println('return;')
     printer.un_scope()

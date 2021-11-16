@@ -1,6 +1,8 @@
 KERNEL: SOBEL2D
-COUNT: 15
-ITERATE: 1
+COUNT: 12
+REPEAT: 1
+ITERATE: 512
+BOARDER: streaming
 input img(9720, 1024)
 local mag_x = (img(1, -1) - img(-1, -1)) + (img(1,  0) - img(-1,  0)) * 3 + (img(1,  1) - img(-1,  1))
 local mag_y = (img(-1, 1) - img(-1, -1)) + (img( 0, 1) - img( 0, -1)) * 3 + (img( 1, 1) - img( 1, -1))

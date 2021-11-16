@@ -1,8 +1,8 @@
 KERNEL: DILATE
-COUNT: 3
-ITERATE: 12
-REPEAT: 6
-BOARDER: overlap
+COUNT: 12
+ITERATE: 512
+REPEAT: 1
+BOARDER: streaming
 input s(9720, 1024)
 local t1 = if(s(0,2)>s(1,1), s(0,2), s(1,1))
 local t2 = if(s(1,2)>s(1,3), s(1,2), s(1,3))

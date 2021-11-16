@@ -1,7 +1,8 @@
 KERNEL: HEAT3D
-COUNT: 15
-ITERATE: 2
-BOARDER: overlap
+COUNT: 12
+REPEAT: 1
+ITERATE: 512
+BOARDER: streaming
 input in(9720, 32, 32)
 local cal1 = (in(1,0,0) - 2*in(0,0,0) + in(-1,0,0))/8
 local cal2 = (in(0,1,0) - 2*in(0,0,0) + in(0,-1,0))/8
