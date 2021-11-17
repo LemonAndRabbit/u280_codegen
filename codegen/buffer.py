@@ -38,7 +38,7 @@ class LineBuffer:
 
         #TODO: Assume min_offset <= 0 here
         self.min_block_offset = math.ceil(-self.min_offset/self.unroll_factor)
-        self.max_block_offset = math.ceil(self.max_offset / self.unroll_factor)
+        self.max_block_offset = math.ceil((self.max_offset + 1) / self.unroll_factor)
 
         self.blocks = list()
         for ref in refs_by_offset:
